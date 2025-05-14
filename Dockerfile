@@ -1,5 +1,8 @@
 FROM node:18-slim
 
+ENV NODE_ENV=production
+ENV APPLICATION_ENV=production
+
 # Set up working directory
 WORKDIR /usr/src/app
 
