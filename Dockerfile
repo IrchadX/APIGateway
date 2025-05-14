@@ -2,7 +2,12 @@ FROM node:18
 
 # Install Fluent Bit
 # Install required packages
-RUN apt-get update && apt-get install -y curl gnupg lsb-release
+RUN apt-get update && \
+    apt-get install -y curl gnupg lsb-release && \
+    curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list && \
+    apt-get update && \
+    apt-get install -y fluent-bit
 
 # Add Fluent Bit repo and key
 RUN curl -s https://packages.fluentbit.io/install.sh | bash
