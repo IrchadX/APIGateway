@@ -1,26 +1,21 @@
 FROM node:18
 
-# Create app directory
+# Install Fluent Bit
+RUN apt-get update && apt-get install -y curl gnupg && \
+    curl -s https://packages.fluentbit.io/install.sh | bash && \
+    apt-get install -y fluent-bit
+
+# Set up working directory
 WORKDIR /usr/src/app
 
-# Copy package files
+# Copy backend code and install
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
-RUN npm install -g @nestjs/cli
-
-# Copy prisma schema first (for optimization)
-COPY prisma ./prisma/
-
-# Generate Prisma client with correct binaries
-RUN npx prisma generate
-
-# Copy the rest of your app
 COPY . .
-
-# Build the app
 RUN npm run build
 
-# Start the app
-CMD ["nest", "start"]
+# Copy Fluent Bit config
+COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
+
+# Command: run Fluent Bit and NestJS backend together
+CMD fluent-bit -c /fluent-bit/etc/fluent-bit.conf & node dist/main.js
