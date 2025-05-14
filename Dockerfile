@@ -8,6 +8,22 @@ ENV APPLICATION_ENV=production
 # Set up working directory
 WORKDIR /usr/src/app
 
+# Install dependencies for Prisma
+RUN apt-get update && \
+    apt-get install -y openssl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Copy package files first for better caching
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies and generate Prisma client
+RUN npm ci
+RUN npx prisma generate
+
 # Install NestJS CLI globally
 RUN npm install -g @nestjs/cli
 
