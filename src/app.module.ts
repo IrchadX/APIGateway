@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { ProxyService } from './proxy/proxy.service';
+import { FluentLogger } from './logging/fluent-logger.service';
 @Module({
   imports: [ConfigModule.forRoot(), HttpModule, AuthModule],
   controllers: [AppController],
@@ -22,6 +23,7 @@ import { ProxyService } from './proxy/proxy.service';
       inject: [ConfigService],
     },
     ProxyService,
+    FluentLogger,
   ],
 })
 export class AppModule {}
