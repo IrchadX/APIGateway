@@ -1,44 +1,40 @@
-FROM node:18
+FROM node:18-slim
 
-# Install Fluent Bit
-# Install required packages
+# Set up working directory
+WORKDIR /usr/src/app
+
+# Install dependencies for Fluent Bit
 RUN apt-get update && \
     apt-get install -y curl gnupg lsb-release && \
     curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list && \
     apt-get update && \
-    apt-get install -y fluent-bit
+    apt-get install -y fluent-bit && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Add Fluent Bit repo and key
-# Install dependencies
-RUN apt-get update && apt-get install -y curl gnupg lsb-release
+# Create directory for Fluent Bit configuration
+RUN mkdir -p /fluent-bit/etc
 
-# Add Fluent Bit GPG key
-RUN curl -fSL https://packages.fluentbit.io/fluentbit.key -o fluentbit.key \
-  && gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg fluentbit.key \
-  && rm fluentbit.key
-
-# Add Fluent Bit repo
-RUN echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list
-
-# Update again and install Fluent Bit
-RUN apt-get update && apt-get install -y fluent-bit
-
-# Install Fluent Bit
-RUN apt-get install -y fluent-bit
-
-
-# Set up working directory
-WORKDIR /usr/src/app
-
-# Copy backend code and install
+# Install Node.js dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production
+
+# Copy application code
 COPY . .
+
+# Build the application
 RUN npm run build
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 
-# Command: run Fluent Bit and NestJS backend together
-CMD fluent-bit -c /fluent-bit/etc/fluent-bit.conf & node dist/main.js
+# Expose ports (adjust if needed)
+EXPOSE 3000
+
+# Create a startup script
+RUN echo '#!/bin/bash\nfluent-bit -c /fluent-bit/etc/fluent-bit.conf &\nnode dist/main.js' > /usr/src/app/start.sh && \
+    chmod +x /usr/src/app/start.sh
+
+# Command to run both services
+CMD ["/usr/src/app/start.sh"]
