@@ -1,4 +1,4 @@
-FROM node:18
+FROM node:18-slim
 
 # Set up working directory
 WORKDIR /usr/src/app
@@ -23,53 +23,59 @@ RUN npm ci
 # Copy application code
 COPY . .
 
-# Add debug information to help diagnose build issues
-RUN echo "==== Current directory structure before build ====" && \
-    ls -la && \
-    echo "==== package.json contents ====" && \
-    cat package.json
-
-# Build the application using the exact command from your package.json
+# Build the application
 RUN npm run build
-
-# Add more debug information to check the output
-RUN echo "==== Current directory structure after build ====" && \
-    ls -la && \
-    echo "==== Dist directory structure ====" && \
-    ls -la dist/ || echo "dist directory not found"
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 
-# Expose ports (adjust if needed)
+# Expose ports
 EXPOSE 3000
 
-# Create a startup script that checks for the correct file location
+# Create startup script with proper error handling and logging
 RUN echo '#!/bin/bash\n\
-# Start Fluent Bit\n\
+set -e\n\
+\n\
+# Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
 /opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
+FLUENT_BIT_PID=$!\n\
 \n\
-# Start the NestJS application with proper error handling\n\
-echo "Starting NestJS application..."\n\
+# Function to check if Fluent Bit is still running\n\
+check_fluent_bit() {\n\
+  if ! kill -0 $FLUENT_BIT_PID 2>/dev/null; then\n\
+    echo "Fluent Bit crashed. Exiting..."\n\
+    exit 1\n\
+  fi\n\
+}\n\
 \n\
-# Check common locations for the main.js file\n\
-if [ -f "dist/main.js" ]; then\n\
-  echo "Found main.js at dist/main.js"\n\
-  NODE_ENV=production node dist/main.js\n\
-elif [ -f "dist/src/main.js" ]; then\n\
-  echo "Found main.js at dist/src/main.js"\n\
-  NODE_ENV=production node dist/src/main.js\n\
-elif [ -f "dist/apps/api-gateway/main.js" ]; then\n\
-  echo "Found main.js at dist/apps/api-gateway/main.js"\n\
-  NODE_ENV=production node dist/apps/api-gateway/main.js\n\
-else\n\
-  echo "Error: Could not find main.js. Directory contents:"\n\
-  find / -name "main.js" 2>/dev/null | head -n 10\n\
-  echo "Directory structure:"\n\
-  ls -R dist/\n\
-  exit 1\n\
-fi\n' > /usr/src/app/start.sh && \
+# Wait a moment to ensure Fluent Bit starts properly\n\
+sleep 2\n\
+check_fluent_bit\n\
+\n\
+# Start the NestJS application with proper error capturing\n\
+echo "Starting NestJS application at $(date)..."\n\
+echo "Using Node.js $(node --version)"\n\
+echo "APPLICATION_ENV=${APPLICATION_ENV:-not set}"\n\
+echo "NODE_ENV=${NODE_ENV:-not set}"\n\
+\n\
+# Run the NestJS application with output logged\n\
+NODE_ENV=production node dist/src/main.js 2>&1 | tee /tmp/app.log\n\
+\n\
+# If we get here, the application exited\n\
+EXIT_CODE=$?\n\
+echo "Application exited with code $EXIT_CODE at $(date)"\n\
+\n\
+if [ $EXIT_CODE -ne 0 ]; then\n\
+  echo "Application crashed. Last 20 lines of log:"\n\
+  tail -n 20 /tmp/app.log\n\
+fi\n\
+\n\
+# Kill Fluent Bit before exiting\n\
+kill $FLUENT_BIT_PID 2>/dev/null || true\n\
+\n\
+# Exit with the same code as the application\n\
+exit $EXIT_CODE\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
 # Command to run both services
