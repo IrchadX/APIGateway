@@ -23,8 +23,9 @@ RUN npm ci
 # Copy application code
 COPY . .
 
-# Build the application (with verbose output for debugging)
-RUN npm run build || (echo "Build failed. Package.json content:" && cat package.json && exit 1)
+# Build the application using NestJS CLI
+RUN npx nest build
+RUN ls -la dist/
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
@@ -32,8 +33,20 @@ COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 # Expose ports (adjust if needed)
 EXPOSE 3000
 
-# Create a startup script
-RUN echo '#!/bin/bash\nfluent-bit -c /fluent-bit/etc/fluent-bit.conf &\nnode dist/main.js' > /usr/src/app/start.sh && \
+# Create a startup script with correct paths
+RUN echo '#!/bin/bash\n\
+# Check if Fluent Bit is installed and in PATH\n\
+FB_PATH=$(which fluent-bit || echo "/opt/fluent-bit/bin/fluent-bit")\n\
+if [ -x "$FB_PATH" ]; then\n\
+  echo "Starting Fluent Bit..."\n\
+  $FB_PATH -c /fluent-bit/etc/fluent-bit.conf &\n\
+else\n\
+  echo "Warning: Fluent Bit not found in PATH. Skipping..."\n\
+fi\n\
+\n\
+# Start the NestJS application\n\
+echo "Starting NestJS application..."\n\
+NODE_ENV=production node dist/main.js\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
 # Command to run both services
