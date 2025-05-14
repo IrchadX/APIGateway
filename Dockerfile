@@ -67,8 +67,32 @@ echo "Using Node.js $(node --version)"\n\
 echo "APPLICATION_ENV=${APPLICATION_ENV:-not set}"\n\
 echo "NODE_ENV=${NODE_ENV:-not set}"\n\
 \n\
-# Run the NestJS application with output logged\n\
-NODE_ENV=production node dist/src/main.js 2>&1 | tee /tmp/app.log\n\
+# List distribution directory structure\n\
+echo "Distribution directory contents:"\n\
+find dist -type f | sort\n\
+\n\
+# Try different possible entry points, printing results\n\
+# First try standard NestJS output path\n\
+if [ -f "dist/main.js" ]; then\n\
+  echo "Found standard NestJS entry point at dist/main.js"\n\
+  ENTRY_POINT="dist/main.js"\n\
+elif [ -f "dist/src/main.js" ]; then\n\
+  echo "Found entry point at dist/src/main.js"\n\
+  ENTRY_POINT="dist/src/main.js"\n\
+else\n\
+  echo "ERROR: Could not find NestJS entry point. Distribution directory contents:"\n\
+  find dist -type f | sort\n\
+  exit 1\n\
+fi\n\
+\n\
+echo "Using entry point: $ENTRY_POINT"\n\
+\n\
+# Set environment variables needed for the app\n\
+export PORT=3512\n\
+\n\
+# Run the NestJS application with output logged and keep it in foreground\n\
+echo "Starting application with: NODE_ENV=production node $ENTRY_POINT"\n\
+NODE_ENV=production node $ENTRY_POINT 2>&1 | tee /tmp/app.log\n\
 \n\
 # If we get here, the application exited\n\
 EXIT_CODE=$?\n\
