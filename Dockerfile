@@ -1,3 +1,33 @@
+# Use Debian-based Node image instead of Alpine for compatibility with Fluent Bit
+FROM node:20 AS builder
+
+# Set up environment variables
+ENV NODE_ENV=production
+ENV APPLICATION_ENV=production
+
+# Set up working directory
+WORKDIR /usr/src/app
+
+# Install NestJS CLI globally
+RUN npm install -g @nestjs/cli
+
+# Install dependencies for Fluent Bit
+RUN apt-get update && \
+    apt-get install -y curl gnupg lsb-release && \
+    curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list && \
+    apt-get update && \
+    apt-get install -y fluent-bit && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create directory for Fluent Bit configuration
+RUN mkdir -p /fluent-bit/etc
+
+# Install Node.js dependencies
+COPY package*.json ./
+RUN npm ci
+
 # Copy application code
 COPY . .
 
