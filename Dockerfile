@@ -1,9 +1,15 @@
 FROM node:18
 
 # Install Fluent Bit
-RUN apt-get update && apt-get install -y curl gnupg && \
-    curl -s https://packages.fluentbit.io/install.sh | bash && \
-    apt-get install -y fluent-bit
+# Install required packages
+RUN apt-get update && apt-get install -y curl gnupg lsb-release
+
+# Add Fluent Bit repo and key
+RUN curl -s https://packages.fluentbit.io/install.sh | bash
+
+# Install Fluent Bit
+RUN apt-get install -y fluent-bit
+
 
 # Set up working directory
 WORKDIR /usr/src/app
