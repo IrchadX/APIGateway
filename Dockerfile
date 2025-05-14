@@ -1,33 +1,3 @@
-# Use Debian-based Node image instead of Alpine for compatibility with Fluent Bit
-FROM node:20 AS builder
-
-# Set up environment variables
-ENV NODE_ENV=production
-ENV APPLICATION_ENV=production
-
-# Set up working directory
-WORKDIR /usr/src/app
-
-# Install NestJS CLI globally
-RUN npm install -g @nestjs/cli
-
-# Install dependencies for Fluent Bit
-RUN apt-get update && \
-    apt-get install -y curl gnupg lsb-release && \
-    curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list && \
-    apt-get update && \
-    apt-get install -y fluent-bit && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create directory for Fluent Bit configuration
-RUN mkdir -p /fluent-bit/etc
-
-# Install Node.js dependencies
-COPY package*.json ./
-RUN npm ci
-
 # Copy application code
 COPY . .
 
@@ -37,76 +7,38 @@ RUN npm run build
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 
-# Expose ports
+# Expose the port your app will run on
 EXPOSE 3512
 
-# Create startup script with proper error handling and logging
+# Create simplified startup script that uses the correct entry point
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
 # Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
 /opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
-FLUENT_BIT_PID=$!\n\
-\n\
-# Function to check if Fluent Bit is still running\n\
-check_fluent_bit() {\n\
-  if ! kill -0 $FLUENT_BIT_PID 2>/dev/null; then\n\
-    echo "Fluent Bit crashed. Exiting..."\n\
-    exit 1\n\
-  fi\n\
-}\n\
+FLUENT_PID=$!\n\
 \n\
 # Wait a moment to ensure Fluent Bit starts properly\n\
 sleep 2\n\
-check_fluent_bit\n\
 \n\
-# Start the NestJS application with proper error capturing\n\
-echo "Starting NestJS application at $(date)..."\n\
-echo "Using Node.js $(node --version)"\n\
-echo "APPLICATION_ENV=${APPLICATION_ENV:-not set}"\n\
-echo "NODE_ENV=${NODE_ENV:-not set}"\n\
+# Start the NestJS application - using the confirmed path to main.js\n\
+echo "Starting NestJS application with entry point: dist/src/main.js"\n\
+node dist/src/main.js &\n\
+APP_PID=$!\n\
 \n\
-# List distribution directory structure\n\
-echo "Distribution directory contents:"\n\
-find dist -type f | sort\n\
+# Wait for either process to exit\n\
+wait -n\n\
 \n\
-# Try different possible entry points, printing results\n\
-# First try standard NestJS output path\n\
-if [ -f "dist/main.js" ]; then\n\
-  echo "Found standard NestJS entry point at dist/main.js"\n\
-  ENTRY_POINT="dist/main.js"\n\
-elif [ -f "dist/src/main.js" ]; then\n\
-  echo "Found entry point at dist/src/main.js"\n\
-  ENTRY_POINT="dist/src/main.js"\n\
-else\n\
-  echo "ERROR: Could not find NestJS entry point. Distribution directory contents:"\n\
-  find dist -type f | sort\n\
-  exit 1\n\
-fi\n\
-\n\
-echo "Using entry point: $ENTRY_POINT"\n\
-\n\
-# Set environment variables needed for the app\n\
-export PORT=3512\n\
-\n\
-# Run the NestJS application with output logged and keep it in foreground\n\
-echo "Starting application with: NODE_ENV=production node $ENTRY_POINT"\n\
-NODE_ENV=production node $ENTRY_POINT 2>&1 | tee /tmp/app.log\n\
-\n\
-# If we get here, the application exited\n\
+# If we get here, one of the processes exited\n\
 EXIT_CODE=$?\n\
-echo "Application exited with code $EXIT_CODE at $(date)"\n\
 \n\
-if [ $EXIT_CODE -ne 0 ]; then\n\
-  echo "Application crashed. Last 20 lines of log:"\n\
-  tail -n 20 /tmp/app.log\n\
-fi\n\
+# Kill the other process\n\
+kill $FLUENT_PID 2>/dev/null || true\n\
+kill $APP_PID 2>/dev/null || true\n\
 \n\
-# Kill Fluent Bit before exiting\n\
-kill $FLUENT_BIT_PID 2>/dev/null || true\n\
-\n\
-# Exit with the same code as the application\n\
+# Exit with the same code as the process that exited\n\
+echo "Process exited with code $EXIT_CODE"\n\
 exit $EXIT_CODE\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
