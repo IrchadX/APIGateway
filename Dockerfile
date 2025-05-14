@@ -30,7 +30,7 @@ RUN npm run build
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 
 # Expose ports
-EXPOSE 3000
+EXPOSE 3512
 
 # Create startup script with proper error handling and logging
 RUN echo '#!/bin/bash\n\
