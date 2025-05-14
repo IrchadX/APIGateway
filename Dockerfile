@@ -1,11 +1,9 @@
 # Use Debian-based Node image
-FROM node:20-slim
+FROM node:20-slim AS builder
 
 # Set up environment variables
 ENV NODE_ENV=production
 ENV APPLICATION_ENV=production
-ENV FLUENT_HOST=localhost
-ENV FLUENT_PORT=24224
 
 # Set up working directory
 WORKDIR /usr/src/app
@@ -28,7 +26,7 @@ RUN mkdir -p /fluent-bit/etc
 
 # Copy package files first for better caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy application code
 COPY . .
@@ -42,29 +40,54 @@ COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 # Expose the port your app will run on
 EXPOSE 3512
 
-# Create simplified startup script with better logging
+# Create improved startup script with better error handling
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-echo "Starting services with NODE_ENV=$NODE_ENV"\n\
+echo "Starting containers with NODE_ENV=$NODE_ENV"\n\
 \n\
-# Start Fluent Bit in the background with logging\n\
+# Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
-/opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf > /var/log/fluent-bit.log 2>&1 &\n\
+/opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
 FLUENT_PID=$!\n\
-echo "Fluent Bit started with PID: $FLUENT_PID"\n\
 \n\
-# Give Fluent Bit time to initialize\n\
+# Wait for Fluent Bit to be available (increased time)\n\
 echo "Waiting for Fluent Bit to start up..."\n\
-sleep 3\n\
+sleep 5\n\
 \n\
-# Make sure the port environment variable is properly used\n\
-export PORT=${PORT:-3512}\n\
-echo "Using port: $PORT"\n\
+# Start the NestJS application\n\
+echo "Starting NestJS application with entry point: dist/src/main.js"\n\
+node dist/src/main.js &\n\
+APP_PID=$!\n\
 \n\
-# Start the NestJS application with proper logging\n\
-echo "Starting NestJS application..."\n\
-node dist/src/main.js\n' > /usr/src/app/start.sh && \
+# Function to check if a process is running\n\
+check_process() {\n\
+  if ! ps -p $1 > /dev/null; then\n\
+    return 1\n\
+  fi\n\
+  return 0\n\
+}\n\
+\n\
+# Monitor both processes\n\
+while true; do\n\
+  # Check if Fluent Bit is running\n\
+  if ! check_process $FLUENT_PID; then\n\
+    echo "Fluent Bit crashed or stopped, restarting..."\n\
+    /opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
+    FLUENT_PID=$!\n\
+    sleep 5\n\
+  fi\n\
+\n\
+  # Check if the app is running\n\
+  if ! check_process $APP_PID; then\n\
+    echo "NestJS application crashed or stopped with exit code $?, restarting..."\n\
+    node dist/src/main.js &\n\
+    APP_PID=$!\n\
+  fi\n\
+\n\
+  # Sleep before checking again\n\
+  sleep 5\n\
+done\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
 # Command to run the startup script
