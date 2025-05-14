@@ -18,13 +18,13 @@ RUN mkdir -p /fluent-bit/etc
 
 # Install Node.js dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy application code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (with verbose output for debugging)
+RUN npm run build || (echo "Build failed. Package.json content:" && cat package.json && exit 1)
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
