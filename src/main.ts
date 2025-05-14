@@ -23,7 +23,9 @@ async function bootstrap() {
     exposedHeaders: ['set-cookie'],
   });
 
-  await app.listen(3004);
+  const PORT = process.env.PORT || 3000;
+  await app.listen(PORT);
+
   console.log(`Gateway running on ${await app.getUrl()}`);
 }
 bootstrap();
