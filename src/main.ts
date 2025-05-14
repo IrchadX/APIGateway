@@ -4,65 +4,51 @@ import { AppModule } from './app.module';
 import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { FluentLogger } from './logging/fluent-logger.service';
-import { DbLoggingInterceptor } from './logging/db-logging.interceptor';
 
 async function bootstrap() {
   try {
-    // Try creating a normal logger first in case Fluent Bit isn't ready
     console.log('Initializing application...');
 
-    let app;
+    // First create app with console logger only
+    const app = await NestFactory.create(AppModule, {
+      logger: ['error', 'warn', 'log'], // Console logger first
+      bufferLogs: true, // Buffer logs until logger is ready
+    });
+    console.log('initializezd app');
+
+    // Then initialize Fluent Bit
     try {
-      app = await NestFactory.create(AppModule, {
-        logger: new FluentLogger(),
-      });
-      console.log('Successfully created app with FluentLogger');
-    } catch (loggerError) {
+      const fluentLogger = app.get(FluentLogger); // Use DI
+      app.useLogger(fluentLogger);
+      console.log('Fluent Bit logger initialized');
+    } catch (fluentError) {
       console.error(
-        'Failed to initialize with FluentLogger, falling back to default logger:',
-        loggerError,
+        'Fluent Bit init failed, using console logger:',
+        fluentError,
       );
-      app = await NestFactory.create(AppModule);
     }
 
+    // Basic middleware
     app.use(helmet());
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
-    // Configure CORS if needed
-    // app.enableCors({
-    //   origin: true, // or specify your frontend URL
-    //   credentials: true,
-    //   allowedHeaders: ['Content-Type', 'Authorization'],
-    //   exposedHeaders: ['set-cookie'],
-    // });
+    // Get port from Railway environment
+    const port = parseInt(process.env.PORT || '3512', 10);
 
-    const PORT = process.env.PORT || 3000;
-    console.log('Attempting to start on port:', PORT);
+    // Start server
+    await app.listen(port, '0.0.0.0');
+    console.log(`Application running on ${await app.getUrl()}`);
 
-    await app.listen(PORT);
-    console.log(`Gateway running on ${await app.getUrl()}`);
-
-    // Set up process error handlers to avoid crashing
-    process.on('uncaughtException', (error) => {
-      console.error('Uncaught exception:', error);
-      // Don't exit - let the process continue
-    });
-
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('Unhandled rejection at:', promise, 'reason:', reason);
-      // Don't exit - let the process continue
-    });
-
-    // app.useGlobalInterceptors(new DbLoggingInterceptor(new FluentLogger()));
+    // Keep process alive
+    await new Promise(() => {});
   } catch (error) {
-    console.error('Fatal error during application bootstrap:', error);
-    // Wait a bit before exiting to ensure logs are written
-    setTimeout(() => process.exit(1), 1000);
+    console.error('Bootstrap failed:', error);
+    process.exit(1);
   }
 }
 
+// Start application
 bootstrap().catch((err) => {
-  console.error('Error in bootstrap function:', err);
-  // Wait a bit before exiting to ensure logs are written
-  setTimeout(() => process.exit(1), 1000);
+  console.error('Unhandled bootstrap error:', err);
+  process.exit(1);
 });
