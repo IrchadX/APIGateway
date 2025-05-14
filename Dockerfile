@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:18
 
 # Set up working directory
 WORKDIR /usr/src/app
@@ -23,9 +23,20 @@ RUN npm ci
 # Copy application code
 COPY . .
 
-# Build the application using NestJS CLI
-RUN npx nest build
-RUN ls -la dist/
+# Add debug information to help diagnose build issues
+RUN echo "==== Current directory structure before build ====" && \
+    ls -la && \
+    echo "==== package.json contents ====" && \
+    cat package.json
+
+# Build the application using the exact command from your package.json
+RUN npm run build
+
+# Add more debug information to check the output
+RUN echo "==== Current directory structure after build ====" && \
+    ls -la && \
+    echo "==== Dist directory structure ====" && \
+    ls -la dist/ || echo "dist directory not found"
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
@@ -33,20 +44,32 @@ COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 # Expose ports (adjust if needed)
 EXPOSE 3000
 
-# Create a startup script with correct paths
+# Create a startup script that checks for the correct file location
 RUN echo '#!/bin/bash\n\
-# Check if Fluent Bit is installed and in PATH\n\
-FB_PATH=$(which fluent-bit || echo "/opt/fluent-bit/bin/fluent-bit")\n\
-if [ -x "$FB_PATH" ]; then\n\
-  echo "Starting Fluent Bit..."\n\
-  $FB_PATH -c /fluent-bit/etc/fluent-bit.conf &\n\
-else\n\
-  echo "Warning: Fluent Bit not found in PATH. Skipping..."\n\
-fi\n\
+# Start Fluent Bit\n\
+echo "Starting Fluent Bit..."\n\
+/opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
 \n\
-# Start the NestJS application\n\
+# Start the NestJS application with proper error handling\n\
 echo "Starting NestJS application..."\n\
-NODE_ENV=production node dist/main.js\n' > /usr/src/app/start.sh && \
+\n\
+# Check common locations for the main.js file\n\
+if [ -f "dist/main.js" ]; then\n\
+  echo "Found main.js at dist/main.js"\n\
+  NODE_ENV=production node dist/main.js\n\
+elif [ -f "dist/src/main.js" ]; then\n\
+  echo "Found main.js at dist/src/main.js"\n\
+  NODE_ENV=production node dist/src/main.js\n\
+elif [ -f "dist/apps/api-gateway/main.js" ]; then\n\
+  echo "Found main.js at dist/apps/api-gateway/main.js"\n\
+  NODE_ENV=production node dist/apps/api-gateway/main.js\n\
+else\n\
+  echo "Error: Could not find main.js. Directory contents:"\n\
+  find / -name "main.js" 2>/dev/null | head -n 10\n\
+  echo "Directory structure:"\n\
+  ls -R dist/\n\
+  exit 1\n\
+fi\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
 # Command to run both services
