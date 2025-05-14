@@ -14,7 +14,9 @@ RUN apt-get update && \
 RUN apt-get update && apt-get install -y curl gnupg lsb-release
 
 # Add Fluent Bit GPG key
-RUN curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg
+RUN curl -fSL https://packages.fluentbit.io/fluentbit.key -o fluentbit.key \
+  && gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg fluentbit.key \
+  && rm fluentbit.key
 
 # Add Fluent Bit repo
 RUN echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list
