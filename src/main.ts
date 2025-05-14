@@ -1,54 +1,19 @@
-// src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import helmet from 'helmet';
-import { ValidationPipe } from '@nestjs/common';
-import { FluentLogger } from './logging/fluent-logger.service';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
-  try {
-    console.log('Initializing application...');
+  const app = await NestFactory.create(AppModule);
 
-    // First create app with console logger only
-    const app = await NestFactory.create(AppModule, {
-      logger: ['error', 'warn', 'log'], // Console logger first
-      bufferLogs: true, // Buffer logs until logger is ready
-    });
-    console.log('initializezd app');
+  // Enable Prisma shutdown hooks
+  const prismaService = app.get(PrismaService);
+  await prismaService.enableShutdownHooks(app);
 
-    // Then initialize Fluent Bit
-    try {
-      const fluentLogger = app.get(FluentLogger); // Use DI
-      app.useLogger(fluentLogger);
-      console.log('Fluent Bit logger initialized');
-    } catch (fluentError) {
-      console.error(
-        'Fluent Bit init failed, using console logger:',
-        fluentError,
-      );
-    }
-
-    // Basic middleware
-    app.use(helmet());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
-
-    // Get port from Railway environment
-    const port = parseInt(process.env.PORT || '3512', 10);
-
-    // Start server
-    await app.listen(port, '0.0.0.0');
-    console.log(`Application running on ${await app.getUrl()}`);
-
-    // Keep process alive
-    await new Promise(() => {});
-  } catch (error) {
-    console.error('Bootstrap failed:', error);
-    process.exit(1);
-  }
+  await app.listen(process.env.PORT || 3512, '0.0.0.0');
+  console.log(`Application is running on: ${await app.getUrl()}`);
 }
 
-// Start application
 bootstrap().catch((err) => {
-  console.error('Unhandled bootstrap error:', err);
+  console.error('Application bootstrap failed:', err);
   process.exit(1);
 });
