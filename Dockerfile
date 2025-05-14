@@ -1,6 +1,9 @@
 # Use Debian-based Node image
 FROM node:20-slim AS builder
 
+ENV FLUENT_HOST=fluentbit
+ENV FLUENT_PORT=24224
+
 # Set up environment variables
 ENV NODE_ENV=production
 ENV APPLICATION_ENV=production
