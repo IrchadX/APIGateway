@@ -1,0 +1,17 @@
+services:
+  fluentbit:
+    image: fluent/fluent-bit:latest
+    ports:
+      - '24224:24224'
+      - '24224:24224/udp'
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+  api-gateway:
+    build: .
+    ports:
+      - '3004:3004'
+    environment:
+      - FLUENT_HOST=fluentbit
+      - FLUENT_PORT=24224
+    depends_on:
+      - fluentbit
