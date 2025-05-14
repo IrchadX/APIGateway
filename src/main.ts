@@ -23,8 +23,8 @@ async function bootstrap() {
     // });
 
     const PORT = process.env.PORT || 3000;
+    console.log('Attempting to start on port:', PORT);
     await app.listen(PORT);
-
     console.log(`Gateway running on ${await app.getUrl()}`);
   } catch (error) {
     console.error('Error initializing FluentLogger:', error);
