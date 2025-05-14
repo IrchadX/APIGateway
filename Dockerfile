@@ -1,10 +1,15 @@
-FROM node:18-slim
+# Use Debian-based Node image instead of Alpine for compatibility with Fluent Bit
+FROM node:20 AS builder
 
+# Set up environment variables
 ENV NODE_ENV=production
 ENV APPLICATION_ENV=production
 
 # Set up working directory
 WORKDIR /usr/src/app
+
+# Install NestJS CLI globally
+RUN npm install -g @nestjs/cli
 
 # Install dependencies for Fluent Bit
 RUN apt-get update && \
