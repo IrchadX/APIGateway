@@ -4,8 +4,8 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { FluentLogger } from './logging/fluent-logger.service';
 import { LoggingModule } from './logging/logging.module';
-import { RequestLoggingInterceptor } from './logging/request-logger.interceptor';
-import { PerformanceInterceptor } from './logging/performance-logger.interceptor';
+// import { RequestLoggingInterceptor } from './logging/request-logger.interceptor';
+// import { PerformanceInterceptor } from './logging/performance-logger.interceptor';
 
 async function bootstrap() {
   try {
@@ -34,10 +34,10 @@ async function bootstrap() {
     }
 
     try {
-      app.useGlobalInterceptors(
-        app.get(RequestLoggingInterceptor),
-        app.get(PerformanceInterceptor),
-      );
+      // app.useGlobalInterceptors(
+      //   app.get(RequestLoggingInterceptor),
+      //   app.get(PerformanceInterceptor),
+      // );
       console.log('[BOOTSTRAP] Interceptors registered');
     } catch (err) {
       console.error('[BOOTSTRAP] Failed to register interceptors:', err);
