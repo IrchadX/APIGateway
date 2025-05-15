@@ -1,4 +1,4 @@
-// src/logging/request-logging.interceptor.ts
+// src/logging/request-logger.interceptor.ts
 import {
   Injectable,
   NestInterceptor,
@@ -15,7 +15,14 @@ export class RequestLoggingInterceptor implements NestInterceptor {
   constructor(
     private readonly fluentLogger: FluentLogger,
     private readonly fileLogger: FileLoggerService,
-  ) {}
+  ) {
+    // Log when the interceptor is created to verify it's working
+    console.log('[RequestLoggingInterceptor] Initialized');
+    this.fluentLogger.log(
+      'RequestLoggingInterceptor initialized',
+      'Interceptor',
+    );
+  }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     if (context.getType() !== 'http') {
@@ -44,78 +51,89 @@ export class RequestLoggingInterceptor implements NestInterceptor {
       headers: sanitizedHeaders,
     };
 
-    // Log request
-    this.logRequest(requestData);
+    // Always log to console during debugging
+    console.log(`[HTTP] Incoming request: ${method} ${originalUrl}`);
+
+    // Log request to Fluent and file
+    try {
+      this.fluentLogger.log(
+        `Incoming request: ${method} ${originalUrl}`,
+        'HTTP Request',
+        requestData,
+      );
+      this.fileLogger.log(
+        `Incoming request: ${method} ${originalUrl}`,
+        'HTTP Request',
+      );
+    } catch (error) {
+      console.error(
+        '[RequestLoggingInterceptor] Error logging request:',
+        error,
+      );
+    }
 
     return next.handle().pipe(
       tap({
         next: (data) => {
-          const responseTime = Date.now() - startTime;
-          const response = context.switchToHttp().getResponse();
-          const { statusCode } = response;
+          try {
+            const responseTime = Date.now() - startTime;
+            const response = context.switchToHttp().getResponse();
+            const { statusCode } = response;
 
-          // Sanitize response if needed
-          let sanitizedResponse = data;
-          if (data && typeof data === 'object') {
-            sanitizedResponse = { ...data };
-            // Remove sensitive fields if needed
-            // delete sanitizedResponse.password;
-            // delete sanitizedResponse.token;
+            // Sanitize response if needed
+            let sanitizedResponse = data;
+            if (data && typeof data === 'object') {
+              sanitizedResponse = { ...data };
+              // Remove sensitive fields if needed
+              // delete sanitizedResponse.password;
+              // delete sanitizedResponse.token;
+            }
+
+            const logMessage = `Response: ${statusCode} ${method} ${originalUrl} - ${responseTime}ms`;
+
+            // Always log to console during debugging
+            console.log(`[HTTP] ${logMessage}`);
+
+            // Log to Fluent and file
+            this.fluentLogger.log(logMessage, 'HTTP Response', {
+              statusCode,
+              responseTime,
+              requestUrl: originalUrl,
+              method,
+            });
+            this.fileLogger.log(logMessage, 'HTTP Response');
+          } catch (error) {
+            console.error(
+              '[RequestLoggingInterceptor] Error logging response:',
+              error,
+            );
           }
-
-          this.logResponse({
-            statusCode,
-            responseTime,
-            requestUrl: originalUrl,
-            method,
-            response: sanitizedResponse,
-          });
         },
         error: (error) => {
-          const responseTime = Date.now() - startTime;
+          try {
+            const responseTime = Date.now() - startTime;
+            const logMessage = `Error response: ${error.status || 500} ${method} ${originalUrl} - ${responseTime}ms`;
 
-          this.logResponse({
-            statusCode: error.status || 500,
-            responseTime,
-            requestUrl: originalUrl,
-            method,
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-            },
-          });
+            // Always log to console
+            console.error(`[HTTP] ${logMessage}`, error.message);
+
+            // Log to Fluent and file
+            this.fluentLogger.error(logMessage, error.stack, 'HTTP Response', {
+              statusCode: error.status || 500,
+              responseTime,
+              requestUrl: originalUrl,
+              method,
+              errorMessage: error.message,
+            });
+            this.fileLogger.error(logMessage, error.stack, 'HTTP Response');
+          } catch (loggingError) {
+            console.error(
+              '[RequestLoggingInterceptor] Error logging error response:',
+              loggingError,
+            );
+          }
         },
       }),
     );
-  }
-
-  private logRequest(requestData: any) {
-    const logMessage = `Incoming request: ${requestData.method} ${requestData.url}`;
-    this.fluentLogger.log(logMessage, 'HTTP Request', requestData);
-    this.fileLogger.log(logMessage, 'HTTP Request');
-  }
-
-  private logResponse(responseData: any) {
-    const statusCode = responseData.statusCode;
-    const level = statusCode >= 400 ? 'error' : 'info';
-    const logMessage = `Response: ${responseData.statusCode} ${responseData.method} ${responseData.requestUrl} - ${responseData.responseTime}ms`;
-
-    // Use error level for 4xx and 5xx responses
-    if (level === 'error') {
-      this.fluentLogger.error(
-        logMessage,
-        responseData.error?.stack,
-        'HTTP Response',
-      );
-      this.fileLogger.error(
-        logMessage,
-        responseData.error?.stack,
-        'HTTP Response',
-      );
-    } else {
-      this.fluentLogger.log(logMessage, 'HTTP Response', responseData);
-      this.fileLogger.log(logMessage, 'HTTP Response');
-    }
   }
 }

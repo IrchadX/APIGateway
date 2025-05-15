@@ -1,4 +1,4 @@
-// src/logging/performance-logging.interceptor.ts
+// src/logging/performance-logger.interceptor.ts
 import {
   Injectable,
   NestInterceptor,
@@ -15,7 +15,11 @@ export class PerformanceInterceptor implements NestInterceptor {
   constructor(
     private readonly fluentLogger: FluentLogger,
     private readonly fileLogger: FileLoggerService,
-  ) {}
+  ) {
+    // Log when the interceptor is created to verify it's working
+    console.log('[PerformanceInterceptor] Initialized');
+    this.fluentLogger.log('PerformanceInterceptor initialized', 'Interceptor');
+  }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const startTime = Date.now();
@@ -27,7 +31,7 @@ export class PerformanceInterceptor implements NestInterceptor {
       routeInfo = `${request.method} ${request.originalUrl}`;
     } else if (contextType === 'rpc') {
       const rpc = context.switchToRpc();
-      routeInfo = `RPC: ${rpc.getContext().get('pattern') || 'unknown'}`;
+      routeInfo = `RPC: ${rpc.getContext()?.get('pattern') || 'unknown'}`;
     } else if (contextType === 'ws') {
       routeInfo = `WebSocket: ${context.getArgs()[0]?.event || 'unknown'}`;
     } else {
@@ -44,23 +48,37 @@ export class PerformanceInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => {
-          this.recordPerformance({
-            routeInfo,
-            controllerClass,
-            handlerMethod,
-            memBefore,
-            startTime,
-          });
+          try {
+            this.recordPerformance({
+              routeInfo,
+              controllerClass,
+              handlerMethod,
+              memBefore,
+              startTime,
+            });
+          } catch (error) {
+            console.error(
+              '[PerformanceInterceptor] Error recording performance:',
+              error,
+            );
+          }
         },
         error: () => {
-          this.recordPerformance({
-            routeInfo,
-            controllerClass,
-            handlerMethod,
-            memBefore,
-            startTime,
-            error: true,
-          });
+          try {
+            this.recordPerformance({
+              routeInfo,
+              controllerClass,
+              handlerMethod,
+              memBefore,
+              startTime,
+              error: true,
+            });
+          } catch (error) {
+            console.error(
+              '[PerformanceInterceptor] Error recording performance on error:',
+              error,
+            );
+          }
         },
       }),
     );
@@ -113,16 +131,28 @@ export class PerformanceInterceptor implements NestInterceptor {
       message = `Performance error: ${data.routeInfo} failed after ${executionTime}ms`;
     }
 
+    // Always log to console in non-production environments
+    if (process.env.NODE_ENV !== 'production' || level !== 'info') {
+      console.log(`[Performance] ${message}`);
+    }
+
     // Log to Fluent and file
-    if (level === 'warn') {
-      this.fluentLogger.warn(message, 'Performance', perfData);
-      this.fileLogger.warn(message, 'Performance');
-    } else if (level === 'error') {
-      this.fluentLogger.error(message, '', 'Performance');
-      this.fileLogger.error(message, '', 'Performance');
-    } else {
-      this.fluentLogger.log(message, 'Performance', perfData);
-      this.fileLogger.log(message, 'Performance');
+    try {
+      if (level === 'warn') {
+        this.fluentLogger.warn(message, 'Performance', perfData);
+        this.fileLogger.warn(message, 'Performance');
+      } else if (level === 'error') {
+        this.fluentLogger.error(message, '', 'Performance', perfData);
+        this.fileLogger.error(message, '', 'Performance');
+      } else {
+        this.fluentLogger.log(message, 'Performance', perfData);
+        this.fileLogger.log(message, 'Performance');
+      }
+    } catch (error) {
+      console.error(
+        '[PerformanceInterceptor] Error logging performance metrics:',
+        error,
+      );
     }
   }
 }
