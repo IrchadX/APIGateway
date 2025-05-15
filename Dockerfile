@@ -49,8 +49,14 @@ RUN npm run build
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 
-# Expose the port your app will run on
-EXPOSE 3512
+EXPOSE 3512 
+# NestJS app port
+EXPOSE 24224 
+# HTTP input port
+EXPOSE 24225 
+# Forward input port
+EXPOSE 2020 
+# Fluent Bit API port
 
 # Create improved startup script with better error handling and Prisma re-generation
 RUN echo '#!/bin/bash\n\
