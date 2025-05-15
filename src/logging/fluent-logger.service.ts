@@ -21,7 +21,7 @@ export class FluentLogger implements LoggerService {
     }
   }
 
-  log(message: string, context?: string) {
+  log(message: string, context?: string, p0?: unknown) {
     this.sendLog('info', message, context);
   }
 
@@ -29,7 +29,37 @@ export class FluentLogger implements LoggerService {
     this.sendLog('error', message, context, { trace });
   }
 
-  warn(message: string, context?: string) {
+  warn(
+    message: string,
+    context?: string,
+    perfData?: {
+      routeInfo: any;
+      controller: any;
+      handler: any;
+      executionTime: string;
+      memoryUsage: {
+        before: {
+          rss: string;
+          heapTotal: string;
+          heapUsed: string;
+          external: string;
+        };
+        after: {
+          rss: string;
+          heapTotal: string;
+          heapUsed: string;
+          external: string;
+        };
+        diff: {
+          rss: string;
+          heapTotal: string;
+          heapUsed: string;
+          external: string;
+        };
+      };
+      timestamp: string;
+    },
+  ) {
     this.sendLog('warn', message, context);
   }
 

@@ -6,8 +6,18 @@ import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { ProxyService } from './proxy/proxy.service';
 import { FluentLogger } from './logging/fluent-logger.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { LoggingModule } from './logging/logging.module';
 @Module({
-  imports: [ConfigModule.forRoot(), HttpModule, AuthModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    LoggingModule,
+    PrismaModule,
+    HttpModule,
+    AuthModule,
+  ],
   controllers: [AppController],
   providers: [
     {

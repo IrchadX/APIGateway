@@ -6,6 +6,7 @@ ENV NODE_ENV=production
 ENV APPLICATION_ENV=production
 ENV FLUENT_HOST=localhost
 ENV FLUENT_PORT=24224
+ENV LOG_DIR=/fluent-bit/logs
 
 # Set up working directory
 WORKDIR /usr/src/app
@@ -20,8 +21,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create directory for Fluent Bit configuration
-RUN mkdir -p /fluent-bit/etc
+# Create directories for Fluent Bit configuration and logs
+RUN mkdir -p /fluent-bit/etc /fluent-bit/logs
+RUN chmod 755 /fluent-bit/logs
 
 # Install NestJS CLI globally
 RUN npm install -g @nestjs/cli
@@ -58,6 +60,14 @@ echo "Starting containers with NODE_ENV=$NODE_ENV"\n\
 echo "Regenerating Prisma client..."\n\
 npx prisma generate\n\
 \n\
+# Ensure log directory exists and has proper permissions\n\
+mkdir -p /fluent-bit/logs\n\
+chmod 755 /fluent-bit/logs\n\
+\n\
+# Also create local logs directory for application file logging\n\
+mkdir -p /usr/src/app/logs\n\
+chmod 755 /usr/src/app/logs\n\
+\n\
 # Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
 /opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
@@ -84,7 +94,38 @@ check_process() {\n\
   return 0\n\
 }\n\
 \n\
-# Monitor both processes\n\
+# Function to rotate logs if needed\n\
+rotate_logs() {\n\
+  # Get size of application.log in MB\n\
+  if [ -f "/fluent-bit/logs/application.log" ]; then\n\
+    SIZE=$(du -m "/fluent-bit/logs/application.log" | cut -f1)\n\
+    \n\
+    # If larger than 100MB, rotate\n\
+    if [ "$SIZE" -gt 100 ]; then\n\
+      echo "Rotating logs - application.log has grown to ${SIZE}MB"\n\
+      TIMESTAMP=$(date +"%Y%m%d_%H%M%S")\n\
+      mv "/fluent-bit/logs/application.log" "/fluent-bit/logs/application_${TIMESTAMP}.log"\n\
+      \n\
+      # Signal Fluent Bit to reopen log files\n\
+      if check_process $FLUENT_PID; then\n\
+        kill -USR1 $FLUENT_PID\n\
+      fi\n\
+    fi\n\
+  fi\n\
+  \n\
+  # Also rotate application logs if needed\n\
+  if [ -f "/usr/src/app/logs/application.log" ]; then\n\
+    SIZE=$(du -m "/usr/src/app/logs/application.log" | cut -f1)\n\
+    \n\
+    if [ "$SIZE" -gt 100 ]; then\n\
+      echo "Rotating logs - application file log has grown to ${SIZE}MB"\n\
+      TIMESTAMP=$(date +"%Y%m%d_%H%M%S")\n\
+      mv "/usr/src/app/logs/application.log" "/usr/src/app/logs/application_${TIMESTAMP}.log"\n\
+    fi\n\
+  fi\n\
+}\n\
+\n\
+# Monitor both processes and handle log rotation\n\
 while true; do\n\
   # Check if Fluent Bit is running\n\
   if ! check_process $FLUENT_PID; then\n\
@@ -103,8 +144,13 @@ while true; do\n\
     APP_PID=$!\n\
   fi\n\
 \n\
+  # Check if logs need to be rotated - do this once an hour\n\
+  if [ "$(date +"%M")" = "00" ]; then\n\
+    rotate_logs\n\
+  fi\n\
+\n\
   # Sleep before checking again\n\
-  sleep 5\n\
+  sleep 60\n\
 done\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
