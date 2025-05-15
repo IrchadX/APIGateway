@@ -26,7 +26,6 @@ RUN mkdir -p /fluent-bit/etc /fluent-bit/logs
 RUN chmod 755 /fluent-bit/logs
 
 RUN npm install winston 
-RUN npm install winston-fluent --legacy-peer-deps
 
 # Install NestJS CLI globally
 RUN npm install -g @nestjs/cli
