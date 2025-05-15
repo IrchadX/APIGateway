@@ -48,6 +48,7 @@ RUN npm run build
 
 # Copy Fluent Bit config
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
+COPY fluent-bit/parsers.conf /fluent-bit/etc/parsers.conf
 
 EXPOSE 3512 
 # NestJS app port
@@ -186,5 +187,5 @@ RUN chmod 0644 /etc/cron.d/log-rotation
 # Create symlink for cron logs
 RUN ln -sf /dev/stdout /var/log/cron.log
 
-# Command to run the startup script hehehe
+# Command to run the startup script heheh 
 CMD ["/usr/src/app/start.sh"]
