@@ -178,6 +178,7 @@ COPY scripts/start-services.sh /usr/local/bin/start-services
 # Make scripts executable
 RUN chmod +x /usr/local/bin/rotate-logs /usr/local/bin/start-services
 
+
 # Set up cron job for log rotation
 RUN echo "0 * * * * root /usr/local/bin/rotate-logs >> /logs/rotation.log 2>&1" > /etc/cron.d/log-rotation
 RUN chmod 0644 /etc/cron.d/log-rotation
@@ -185,6 +186,5 @@ RUN chmod 0644 /etc/cron.d/log-rotation
 # Create symlink for cron logs
 RUN ln -sf /dev/stdout /var/log/cron.log
 
-
-# Command to run the startup script
+# Command to run the startup script hehehe
 CMD ["/usr/src/app/start.sh"]
