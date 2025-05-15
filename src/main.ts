@@ -71,7 +71,6 @@ async function bootstrap() {
       );
       fluentLogger.error(
         'This is a test error message during bootstrap',
-        undefined,
         'Test',
       );
     } catch (err) {
