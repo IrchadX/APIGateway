@@ -130,7 +130,12 @@ async function bootstrap() {
       '[BOOTSTRAP] Application fully initialized. Ready to handle requests.\n',
     );
   } catch (err) {
-    console.error('[BOOTSTRAP] Fatal bootstrap error:', err);
+    console.error(
+      '[BOOTSTRAP] Fatal bootstrap error:',
+      err instanceof Error ? err.message : err,
+      '\nStack trace:',
+      err instanceof Error ? err.stack : 'No stack trace available',
+    );
     process.exit(1);
   }
 }
