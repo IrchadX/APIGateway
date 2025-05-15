@@ -10,10 +10,7 @@ ENV FLUENT_PORT=24224
 # Set up working directory
 WORKDIR /usr/src/app
 
-# Install NestJS CLI globally
-RUN npm install -g @nestjs/cli
-
-# Install dependencies for Fluent Bit and OpenSSL (needed for Prisma)
+# Install required dependencies
 RUN apt-get update && \
     apt-get install -y curl gnupg lsb-release procps openssl && \
     curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
@@ -26,17 +23,20 @@ RUN apt-get update && \
 # Create directory for Fluent Bit configuration
 RUN mkdir -p /fluent-bit/etc
 
-# Copy package files first for better caching
+# Install NestJS CLI globally
+RUN npm install -g @nestjs/cli
+
+# Copy package files and Prisma schema first
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies with development dependencies (needed for Prisma)
+# Install all dependencies (including dev dependencies needed for Prisma)
 RUN npm ci
 
-# Generate Prisma client
+# Generate Prisma client during build
 RUN npx prisma generate
 
-# Copy application code
+# Copy the rest of the application code
 COPY . .
 
 # Build the application
@@ -48,37 +48,64 @@ COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 # Expose the port your app will run on
 EXPOSE 3512
 
-# Create simplified startup script with better logging and Prisma handling
+# Create improved startup script with better error handling and Prisma re-generation
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-echo "Starting services with NODE_ENV=$NODE_ENV"\n\
+echo "Starting containers with NODE_ENV=$NODE_ENV"\n\
 \n\
-# Start Fluent Bit in the background with logging\n\
+# Regenerate Prisma client on startup to ensure it matches the environment\n\
+echo "Regenerating Prisma client..."\n\
+npx prisma generate\n\
+\n\
+# Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
-/opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf > /var/log/fluent-bit.log 2>&1 &\n\
+/opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
 FLUENT_PID=$!\n\
-echo "Fluent Bit started with PID: $FLUENT_PID"\n\
 \n\
-# Give Fluent Bit time to initialize\n\
+# Wait for Fluent Bit to be available\n\
 echo "Waiting for Fluent Bit to start up..."\n\
-sleep 3\n\
+sleep 5\n\
 \n\
-# Make sure the port environment variable is properly used\n\
+# Set PORT from environment or default\n\
 export PORT=${PORT:-3512}\n\
 echo "Using port: $PORT"\n\
 \n\
-# Log database connection details (with credentials masked)\n\
-if [ -n "$DATABASE_URL" ]; then\n\
-  echo "Database connection string is set"\n\
-  # Generate Prisma client if needed\n\
-  echo "Running Prisma generate to ensure client is built..."\n\
-  npx prisma generate\n\
-fi\n\
+# Start the NestJS application\n\
+echo "Starting NestJS application with entry point: dist/src/main.js"\n\
+node dist/src/main.js &\n\
+APP_PID=$!\n\
 \n\
-# Start the NestJS application with proper logging\n\
-echo "Starting NestJS application..."\n\
-node dist/src/main.js\n' > /usr/src/app/start.sh && \
+# Function to check if a process is running\n\
+check_process() {\n\
+  if ! ps -p $1 > /dev/null; then\n\
+    return 1\n\
+  fi\n\
+  return 0\n\
+}\n\
+\n\
+# Monitor both processes\n\
+while true; do\n\
+  # Check if Fluent Bit is running\n\
+  if ! check_process $FLUENT_PID; then\n\
+    echo "Fluent Bit crashed or stopped, restarting..."\n\
+    /opt/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &\n\
+    FLUENT_PID=$!\n\
+    sleep 5\n\
+  fi\n\
+\n\
+  # Check if the app is running\n\
+  if ! check_process $APP_PID; then\n\
+    echo "NestJS application crashed or stopped, restarting..."\n\
+    # Regenerate Prisma client before restarting the app\n\
+    npx prisma generate\n\
+    node dist/src/main.js &\n\
+    APP_PID=$!\n\
+  fi\n\
+\n\
+  # Sleep before checking again\n\
+  sleep 5\n\
+done\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
 # Command to run the startup script
