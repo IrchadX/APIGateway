@@ -5,9 +5,10 @@ import { PrismaService } from './prisma/prisma.service';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable Prisma shutdown hooks
+  // Get and initialize PrismaService
   const prismaService = app.get(PrismaService);
-  await prismaService.enableShutdownHooks(app);
+  await prismaService.onModuleInit();
+  prismaService.enableShutdownHooks(app);
 
   await app.listen(process.env.PORT || 3512, '0.0.0.0');
   console.log(`Application is running on: ${await app.getUrl()}`);
