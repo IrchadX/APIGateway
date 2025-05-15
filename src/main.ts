@@ -34,10 +34,10 @@ async function bootstrap() {
     }
 
     try {
-      // app.useGlobalInterceptors(
-      //   app.get(RequestLoggingInterceptor),
-      //   app.get(PerformanceInterceptor),
-      // );
+      app.useGlobalInterceptors(
+        app.get(RequestLoggingInterceptor),
+        app.get(PerformanceInterceptor),
+      );
       console.log('[BOOTSTRAP] Interceptors registered');
     } catch (err) {
       console.error('[BOOTSTRAP] Failed to register interceptors:', err);
