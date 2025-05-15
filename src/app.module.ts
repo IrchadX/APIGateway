@@ -1,13 +1,12 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { ProxyService } from './proxy/proxy.service';
-import { FluentLogger } from './logging/fluent-logger.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { LoggingModule } from './logging/logging.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -33,7 +32,6 @@ import { LoggingModule } from './logging/logging.module';
       inject: [ConfigService],
     },
     ProxyService,
-    FluentLogger,
   ],
 })
 export class AppModule {}

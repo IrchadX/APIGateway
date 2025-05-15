@@ -4,10 +4,6 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { FluentLogger } from './logging/fluent-logger.service';
 import { LoggingModule } from './logging/logging.module';
-import { RequestLoggingInterceptor } from './logging/request-logger.interceptor';
-import { PerformanceInterceptor } from './logging/performance-logger.interceptor';
-// import { RequestLoggingInterceptor } from './logging/request-logger.interceptor';
-// import { PerformanceInterceptor } from './logging/performance-logger.interceptor';
 
 async function bootstrap() {
   try {
@@ -35,18 +31,8 @@ async function bootstrap() {
       console.error('[BOOTSTRAP] Failed during Prisma init:', err);
     }
 
-    try {
-      app.useGlobalInterceptors(
-        app.get(RequestLoggingInterceptor),
-        app.get(PerformanceInterceptor),
-      );
-      console.log('[BOOTSTRAP] Interceptors registered');
-    } catch (err) {
-      console.error('[BOOTSTRAP] Failed to register interceptors:', err);
-    }
-
     await app.listen(process.env.PORT || 3513);
-    console.log('[BOOTSTRAP] Listening on port:', process.env.PORT || 3512);
+    console.log('[BOOTSTRAP] Listening on port:', process.env.PORT || 3513);
   } catch (err) {
     console.error('[BOOTSTRAP] Fatal bootstrap error:', err);
     process.exit(1);
