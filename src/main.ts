@@ -43,15 +43,13 @@ async function bootstrap() {
       console.error('[BOOTSTRAP] Failed to register interceptors:', err);
     }
 
-    await app.listen(process.env.PORT || 3512, '0.0.0.0');
+    await app.listen(process.env.PORT || 3513);
     console.log('[BOOTSTRAP] Listening on port:', process.env.PORT || 3512);
   } catch (err) {
     console.error('[BOOTSTRAP] Fatal bootstrap error:', err);
     process.exit(1);
   }
 }
-
-bootstrap();
 
 bootstrap().catch((err) => {
   console.error('Application bootstrap failed:', err);
