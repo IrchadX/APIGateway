@@ -25,7 +25,21 @@ export class FluentLogger implements LoggerService {
     this.sendLog('info', message, context);
   }
 
-  error(message: string, trace: string, context?: string) {
+  error(
+    message: string,
+    trace: string,
+    context?: string,
+    p0?: {
+      responseTime: number;
+      error: { message: any; stack: any; status: any; data: any };
+      method: string;
+      url: string;
+      userId: string;
+      userEmail: string;
+      body: any;
+      headers: Record<string, string>;
+    },
+  ) {
     this.sendLog('error', message, context, { trace });
   }
 

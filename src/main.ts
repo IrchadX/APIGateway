@@ -4,6 +4,8 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { FluentLogger } from './logging/fluent-logger.service';
 import { LoggingModule } from './logging/logging.module';
+import { RequestLoggingInterceptor } from './logging/request-logger.interceptor';
+import { PerformanceInterceptor } from './logging/performance-logger.interceptor';
 
 async function bootstrap() {
   // Create app with custom logger
@@ -19,6 +21,11 @@ async function bootstrap() {
   const prismaService = app.get(PrismaService);
   await prismaService.onModuleInit();
   prismaService.enableShutdownHooks(app);
+
+  app.useGlobalInterceptors(
+    app.get(RequestLoggingInterceptor),
+    app.get(PerformanceInterceptor),
+  );
 
   await app.listen(process.env.PORT || 3512, '0.0.0.0');
   fluentLogger.log(`Application is running on: ${await app.getUrl()}`);
