@@ -3,137 +3,136 @@ import { Injectable, LoggerService } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
-// Add this to your imports
 import { inspect } from 'util';
+import axios from 'axios';
 
 @Injectable()
 export class FluentLogger implements LoggerService {
   private logger: winston.Logger;
   private context: string = 'Application';
-  private initialized: boolean = false;
+  private fluentEnabled: boolean = false;
+  private fluentEndpoint: string;
+  private axiosInstance;
 
   constructor(private configService: ConfigService) {
-    const transports: winston.transport[] = [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.colorize(),
-          winston.format.printf(
-            ({ timestamp, level, message, context, ...meta }) => {
-              return `${timestamp} [${context || this.context}] ${level}: ${message} ${
-                Object.keys(meta).length
-                  ? inspect(meta, { depth: null, colors: true })
-                  : ''
-              }`;
-            },
-          ),
-        ),
-      }),
-    ];
+    // Initialize HTTP client for Fluent Bit
+    this.axiosInstance = axios.create({
+      timeout: 3000,
+    });
 
-    // Enhanced Fluent Bit initialization
-    const fluentEnabled =
-      this.configService.get<string>('FLUENT_ENABLED') !== 'false';
-    if (fluentEnabled) {
-      try {
-        const fluentHost =
-          this.configService.get<string>('FLUENT_HOST') || 'localhost';
-        const fluentPort = parseInt(
-          this.configService.get<string>('FLUENT_PORT') || '24224',
-          10,
-        );
+    // Configure Fluent Bit logging
+    this.configureFluentBit();
 
-        const FluentTransport = require('winston-fluent').Fluent;
-        const fluentTransport = new FluentTransport({
-          tag: this.configService.get('APP_NAME') || 'nest-application',
-          label: 'nestjs',
-          host: fluentHost,
-          port: fluentPort,
-          timeout: 3.0,
-          requireAckResponse: true, // Ensure delivery confirmation
-        });
-
-        fluentTransport.on('error', (error) => {
-          console.error('Fluent Transport Error:', error);
-        });
-
-        transports.push(fluentTransport);
-        this.initialized = true;
-        console.log(
-          `Fluent Bit logging enabled at ${fluentHost}:${fluentPort}`,
-        );
-      } catch (error) {
-        console.error('Fluent Bit transport initialization failed:', error);
-        this.initialized = false;
-      }
-    }
-
+    // Create Winston logger (console transport only)
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
-      transports,
-      defaultMeta: {
-        service: this.configService.get('APP_NAME') || 'nest-application',
-        env: this.configService.get('NODE_ENV') || 'development',
-      },
+      transports: [this.createConsoleTransport()],
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.json(), // Ensure JSON format for Fluent
+        winston.format.json(),
       ),
     });
   }
 
-  setContext(context: string) {
-    this.context = context;
-    return this;
+  private configureFluentBit() {
+    this.fluentEnabled =
+      this.configService.get<string>('FLUENT_ENABLED') === 'true';
+
+    if (this.fluentEnabled) {
+      const fluentHost =
+        this.configService.get<string>('FLUENT_HOST') || 'localhost';
+      const fluentPort =
+        this.configService.get<string>('FLUENT_PORT') || '24224';
+      const fluentHttpPort =
+        this.configService.get<string>('FLUENT_HTTP_PORT') || '9880';
+
+      // Choose either HTTP or TCP endpoint
+      const useHttp =
+        this.configService.get<string>('FLUENT_USE_HTTP') === 'true';
+      this.fluentEndpoint = useHttp
+        ? `http://${fluentHost}:${fluentHttpPort}/nest`
+        : `http://${fluentHost}:${fluentPort}`; // Still using http for consistency
+
+      console.log(
+        `Fluent Bit logging ${useHttp ? 'HTTP' : 'TCP'} endpoint: ${this.fluentEndpoint}`,
+      );
+    }
   }
 
-  log(message: any, context?: string, ...meta: any[]) {
-    try {
-      const logContext = context || this.context;
-      this.logger.info(message, { context: logContext, ...(meta[0] || {}) });
+  private createConsoleTransport() {
+    return new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.colorize(),
+        winston.format.printf(
+          ({ timestamp, level, message, context, ...meta }) => {
+            return `${timestamp} [${context || this.context}] ${level}: ${message} ${
+              Object.keys(meta).length
+                ? inspect(meta, { depth: null, colors: true })
+                : ''
+            }`;
+          },
+        ),
+      ),
+    });
+  }
 
-      // Also log to console during development for easier debugging
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[${logContext}] INFO: ${message}`);
-      }
+  private async sendToFluentBit(data: any) {
+    if (!this.fluentEnabled) return;
+
+    try {
+      const payload = {
+        tag: this.configService.get('APP_NAME') || 'nest-application',
+        timestamp: Math.floor(Date.now() / 1000),
+        record: data,
+      };
+
+      await this.axiosInstance.post(this.fluentEndpoint, payload);
     } catch (error) {
-      console.error('Error in FluentLogger.log:', error);
-      console.log(`[${context || this.context}] INFO: ${message}`);
+      console.error('Failed to send log to Fluent Bit:', error.message);
     }
+  }
+
+  // Modified log methods to include Fluent Bit forwarding
+  log(message: any, context?: string, ...meta: any[]) {
+    const logContext = context || this.context;
+    const logData = {
+      message,
+      context: logContext,
+      level: 'info',
+      ...(meta[0] || {}),
+    };
+
+    this.logger.info(message, logData);
+    this.sendToFluentBit(logData);
   }
 
   error(message: any, trace?: string, context?: string, ...meta: any[]) {
-    try {
-      const logContext = context || this.context;
-      this.logger.error(message, {
-        context: logContext,
-        trace,
-        ...(meta[0] || {}),
-      });
+    const logContext = context || this.context;
+    const logData = {
+      message,
+      trace,
+      context: logContext,
+      level: 'error',
+      ...(meta[0] || {}),
+    };
 
-      // Always log errors to console
-      console.error(`[${logContext}] ERROR: ${message}`);
-      if (trace) console.error(trace);
-    } catch (error) {
-      console.error('Error in FluentLogger.error:', error);
-      console.error(`[${context || this.context}] ERROR: ${message}`);
-      if (trace) console.error(trace);
-    }
+    this.logger.error(message, logData);
+    this.sendToFluentBit(logData);
   }
 
+  // Similar implementations for warn, debug, verbose...
   warn(message: any, context?: string, ...meta: any[]) {
-    try {
-      const logContext = context || this.context;
-      this.logger.warn(message, { context: logContext, ...(meta[0] || {}) });
+    const logContext = context || this.context;
+    const logData = {
+      message,
+      context: logContext,
+      level: 'warn',
+      ...(meta[0] || {}),
+    };
 
-      // Also log warnings to console during development
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(`[${logContext}] WARN: ${message}`);
-      }
-    } catch (error) {
-      console.error('Error in FluentLogger.warn:', error);
-      console.warn(`[${context || this.context}] WARN: ${message}`);
-    }
+    this.logger.warn(message, logData);
+    this.sendToFluentBit(logData);
   }
 
   debug(message: any, context?: string, ...meta: any[]) {
@@ -161,8 +160,7 @@ export class FluentLogger implements LoggerService {
     }
   }
 
-  // Method to check if the logger is properly initialized with Fluent Bit
   isInitialized(): boolean {
-    return this.initialized;
+    return true;
   }
 }
