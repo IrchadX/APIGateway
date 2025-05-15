@@ -3,6 +3,8 @@ import { Injectable, LoggerService } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
+// Add this to your imports
+import { inspect } from 'util';
 
 @Injectable()
 export class FluentLogger implements LoggerService {
@@ -11,76 +13,73 @@ export class FluentLogger implements LoggerService {
   private initialized: boolean = false;
 
   constructor(private configService: ConfigService) {
-    const consoleTransport = new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.colorize(),
-        winston.format.printf(
-          ({ timestamp, level, message, context, ...meta }) => {
-            return `${timestamp} [${context || this.context}] ${level}: ${message} ${
-              Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
-            }`;
-          },
+    const transports: winston.transport[] = [
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          winston.format.colorize(),
+          winston.format.printf(
+            ({ timestamp, level, message, context, ...meta }) => {
+              return `${timestamp} [${context || this.context}] ${level}: ${message} ${
+                Object.keys(meta).length
+                  ? inspect(meta, { depth: null, colors: true })
+                  : ''
+              }`;
+            },
+          ),
         ),
-      ),
-    });
+      }),
+    ];
 
-    // Setup the transports array
-    const transports: any[] = [consoleTransport];
-
-    try {
-      // Check if Fluent Bit logging is enabled through env vars
-      const fluentHost =
-        this.configService.get<string>('FLUENT_HOST') || 'localhost';
-      const fluentPort = parseInt(
-        this.configService.get<string>('FLUENT_PORT') || '24224',
-        10,
-      );
-
-      // We need to dynamically require winston-fluent to avoid dependency issues
+    // Enhanced Fluent Bit initialization
+    const fluentEnabled =
+      this.configService.get<string>('FLUENT_ENABLED') !== 'false';
+    if (fluentEnabled) {
       try {
-        const fluentTransport = require('winston-fluent').Fluent;
-        transports.push(
-          new fluentTransport({
-            tag: this.configService.get('APP_NAME') || 'nest-application',
-            host: fluentHost,
-            port: fluentPort,
-            timeout: 3.0,
-            reconnectInterval: 600000, // 10 minutes
-          }),
+        const fluentHost =
+          this.configService.get<string>('FLUENT_HOST') || 'localhost';
+        const fluentPort = parseInt(
+          this.configService.get<string>('FLUENT_PORT') || '24224',
+          10,
         );
-        console.log(
-          `[FluentLogger] Connected to Fluent Bit at ${fluentHost}:${fluentPort}`,
-        );
+
+        const FluentTransport = require('winston-fluent').Fluent;
+        const fluentTransport = new FluentTransport({
+          tag: this.configService.get('APP_NAME') || 'nest-application',
+          label: 'nestjs',
+          host: fluentHost,
+          port: fluentPort,
+          timeout: 3.0,
+          requireAckResponse: true, // Ensure delivery confirmation
+        });
+
+        fluentTransport.on('error', (error) => {
+          console.error('Fluent Transport Error:', error);
+        });
+
+        transports.push(fluentTransport);
         this.initialized = true;
+        console.log(
+          `Fluent Bit logging enabled at ${fluentHost}:${fluentPort}`,
+        );
       } catch (error) {
-        console.error(
-          '[FluentLogger] Failed to initialize Fluent transport:',
-          error,
-        );
-        console.error(
-          '[FluentLogger] Make sure winston-fluent is installed: npm install winston-fluent',
-        );
+        console.error('Fluent Bit transport initialization failed:', error);
+        this.initialized = false;
       }
-    } catch (error) {
-      console.error(
-        '[FluentLogger] Error setting up FluentBit logging:',
-        error,
-      );
     }
 
-    // Create the logger instance
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
-      transports: transports,
+      transports,
       defaultMeta: {
         service: this.configService.get('APP_NAME') || 'nest-application',
-        environment: this.configService.get('NODE_ENV') || 'development',
+        env: this.configService.get('NODE_ENV') || 'development',
       },
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json(), // Ensure JSON format for Fluent
+      ),
     });
-
-    // Log a startup message to verify the logger is working
-    this.log('FluentLogger initialized', 'Logger');
   }
 
   setContext(context: string) {

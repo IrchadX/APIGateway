@@ -2,7 +2,7 @@
 import { Module, Global } from '@nestjs/common';
 import { FluentLogger } from './fluent-logger.service';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { RequestLoggingInterceptor } from './request-logger.interceptor';
+import { RequestLoggingInterceptor } from './request-logger.service';
 import { PerformanceInterceptor } from './performance-logger.interceptor';
 import { DbLoggingInterceptor } from './db-logging.interceptor';
 import { PrismaService } from 'src/prisma/prisma.service';
