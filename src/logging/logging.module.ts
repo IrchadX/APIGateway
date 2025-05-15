@@ -5,11 +5,13 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { RequestLoggingInterceptor } from './request-logger.interceptor';
 import { PerformanceInterceptor } from './performance-logger.interceptor';
 import { DbLoggingInterceptor } from './db-logging.interceptor';
-
+import { PrismaService } from 'src/prisma/prisma.service';
 import { FileLoggerService } from './file-logger.service';
+import { PrismaModule } from 'src/prisma/prisma.module';
 @Global()
 @Module({
   providers: [
+    PrismaService,
     FluentLogger,
     FileLoggerService,
     {
@@ -26,5 +28,6 @@ import { FileLoggerService } from './file-logger.service';
     },
   ],
   exports: [FluentLogger, FileLoggerService],
+  imports: [PrismaModule],
 })
 export class LoggingModule {}
