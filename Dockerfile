@@ -58,6 +58,14 @@ EXPOSE 24225
 EXPOSE 2020 
 # Fluent Bit API port
 
+# Set log directory environment variable for NestJS
+ENV LOG_DIR=/logs
+
+# Start both services using a startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+
 # Create improved startup script with better error handling and Prisma re-generation
 RUN echo '#!/bin/bash\n\
 set -e\n\
@@ -161,6 +169,22 @@ while true; do\n\
   sleep 60\n\
 done\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
+
+
+# Copy and configure log rotation scripts
+COPY scripts/rotate-logs.sh /usr/local/bin/rotate-logs
+COPY scripts/start-services.sh /usr/local/bin/start-services
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/rotate-logs /usr/local/bin/start-services
+
+# Set up cron job for log rotation
+RUN echo "0 * * * * root /usr/local/bin/rotate-logs >> /logs/rotation.log 2>&1" > /etc/cron.d/log-rotation
+RUN chmod 0644 /etc/cron.d/log-rotation
+
+# Create symlink for cron logs
+RUN ln -sf /dev/stdout /var/log/cron.log
+
 
 # Command to run the startup script
 CMD ["/usr/src/app/start.sh"]
