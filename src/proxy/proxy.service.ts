@@ -47,7 +47,6 @@ export class ProxyService {
     const logLabel = 'Proxy Request';
 
     this.fluentLogger.log(`Proxying request to ${url}`, logLabel, logContext);
-    this.fileLogger.log(`Proxying request to ${url}`, logLabel);
 
     return this.httpService
       .request({
