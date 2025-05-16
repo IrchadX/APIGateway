@@ -152,7 +152,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message,
       context: logContext,
-      level: 'info',
+      level: 'app.info',
       ...(meta[0] || {}),
     };
 
@@ -166,7 +166,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       message,
       trace,
       context: logContext,
-      level: 'error',
+      level: 'app.error',
       ...(meta[0] || {}),
     };
 
@@ -179,7 +179,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message,
       context: logContext,
-      level: 'warn',
+      level: 'app.warn',
       ...(meta[0] || {}),
     };
 
@@ -193,7 +193,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message,
         context: logContext,
-        level: 'debug',
+        level: 'app.debug',
         ...(meta[0] || {}),
       };
 
@@ -216,7 +216,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message,
         context: logContext,
-        level: 'verbose',
+        level: 'app.verbose',
         ...(meta[0] || {}),
       };
 
