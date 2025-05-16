@@ -85,16 +85,13 @@ export class FluentLogger implements LoggerService {
     if (!this.fluentEnabled) return;
 
     try {
-      // Important: Tag the log with the correct level tag to match fluent-bit.conf
-      const tag = `${this.appName}.${level.toLowerCase()}`;
+      const tag = `app.${level.toLowerCase()}`; // Changed from ${appName}.level
 
       const payload = {
-        tag,
-        timestamp: Math.floor(Date.now() / 1000),
-        data: {
-          ...data,
-          timestamp: new Date().toISOString(), // Add ISO timestamp for parsing
-        },
+        // Remove the outer tag since we're using HTTP input
+        ...data,
+        timestamp: new Date().toISOString(),
+        level: level.toLowerCase(), // Ensure level is included in the payload
       };
 
       await this.axiosInstance.post(this.fluentEndpoint, payload);
@@ -102,7 +99,6 @@ export class FluentLogger implements LoggerService {
       console.error('Failed to send log to Fluent Bit:', error.message);
     }
   }
-
   // Modified log methods to include Fluent Bit forwarding
   log(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
