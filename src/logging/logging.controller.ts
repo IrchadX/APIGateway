@@ -4,7 +4,7 @@ import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream } from 'fs';
+import { createReadStream, readFileSync } from 'fs';
 import { promisify } from 'util';
 import * as zlib from 'zlib';
 import { pipeline } from 'stream';
