@@ -16,14 +16,19 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   private axiosInstance;
   private appName: string;
   private logDir: string;
+  private lastErrorTime: number = 0; // Track last error time to avoid log spam
 
   constructor(private configService: ConfigService) {
     // Get the log directory
-    this.logDir = process.env.LOG_DIR || '/tmp/';
+    this.logDir = process.env.LOG_DIR || '/tmp/logs';
 
     // Initialize HTTP client for Fluent Bit
     this.axiosInstance = axios.create({
-      timeout: 3000,
+      timeout: 1000, // Reduce timeout to fail faster
+      // Add retry logic
+      validateStatus: function (status) {
+        return status >= 200 && status < 500; // Handle anything but server errors
+      },
     });
 
     // Get app name for tagging
@@ -136,26 +141,49 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
       const payload = {
         ...data,
-        // IMPORTANT: Include tag in the payload - Fluent Bit will use Tag_Key to extract it
+        // IMPORTANT: Include tag in the payload - Fluent Bit will use tag_key to extract it
         tag: tag,
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(),
         app_name: this.appName,
       };
 
-      // Send to Fluent Bit's configured HTTP endpoint
-      await this.axiosInstance.post(this.fluentEndpoint, payload);
+      // Using a timeout and catch to avoid hanging the application
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
 
-      // Debug logging for development
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug(`Sent log to Fluent Bit: ${tag}`, {
-          endpoint: this.fluentEndpoint,
-          tag,
-          level,
+      try {
+        // Send to Fluent Bit's configured HTTP endpoint
+        await this.axiosInstance.post(this.fluentEndpoint, payload, {
+          signal: controller.signal,
         });
+
+        // Debug logging for development
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug(`Sent log to Fluent Bit: ${tag}`);
+        }
+      } catch (innerError) {
+        // Only show connection errors once every 10 seconds to avoid log spam
+        const now = Date.now();
+        if (!this.lastErrorTime || now - this.lastErrorTime > 10000) {
+          console.error(
+            'Failed to send log to Fluent Bit:',
+            innerError.code === 'ECONNREFUSED'
+              ? 'Connection refused'
+              : innerError.message,
+          );
+          this.lastErrorTime = now;
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     } catch (error) {
-      console.error('Failed to send log to Fluent Bit:', error.message);
+      // Only log outer errors once every 10 seconds
+      const now = Date.now();
+      if (!this.lastErrorTime || now - this.lastErrorTime > 10000) {
+        console.error('Error in sendToFluentBit:', error.message);
+        this.lastErrorTime = now;
+      }
     }
   }
 
