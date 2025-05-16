@@ -40,6 +40,9 @@ RUN npm install -g @nestjs/cli
 COPY package*.json ./
 COPY prisma ./prisma/
 
+# Install archiver for zip functionality
+RUN npm install archiver
+
 # Install all dependencies (including dev dependencies needed for Prisma)
 RUN npm ci
 
