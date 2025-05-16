@@ -6,14 +6,12 @@ import { RequestLoggingInterceptor } from './request-logger.service';
 import { PerformanceInterceptor } from './performance-logger.interceptor';
 import { DbLoggingInterceptor } from './db-logging.interceptor';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { FileLoggerService } from './file-logger.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 @Global()
 @Module({
   providers: [
     PrismaService,
     FluentLogger,
-    FileLoggerService,
     {
       provide: APP_INTERCEPTOR,
       useClass: RequestLoggingInterceptor,
@@ -27,7 +25,7 @@ import { PrismaModule } from 'src/prisma/prisma.module';
       useClass: DbLoggingInterceptor,
     },
   ],
-  exports: [FluentLogger, FileLoggerService],
+  exports: [FluentLogger],
   imports: [PrismaModule],
 })
 export class LoggingModule {}

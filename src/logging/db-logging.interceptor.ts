@@ -7,14 +7,12 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { FluentLogger } from './fluent-logger.service';
-import { FileLoggerService } from './file-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class DbLoggingInterceptor implements NestInterceptor {
   constructor(
     private readonly fluentLogger: FluentLogger,
-    private readonly fileLogger: FileLoggerService,
     private readonly prismaService?: PrismaService,
   ) {}
 
@@ -85,16 +83,12 @@ export class DbLoggingInterceptor implements NestInterceptor {
       ...data,
       timestamp: new Date().toISOString(),
     });
-
-    this.fileLogger.log(message, 'Database');
   }
 
   private logDbOperationError(data: any) {
     const message = `Database error for ${data.routeInfo} after ${data.executionTime}ms: ${data.error.message}`;
 
     this.fluentLogger.error(message, data.error.stack, 'Database');
-
-    this.fileLogger.error(message, data.error.stack, 'Database');
   }
 
   private logPrismaOperation(data: any) {
@@ -104,7 +98,5 @@ export class DbLoggingInterceptor implements NestInterceptor {
       ...data,
       timestamp: new Date().toISOString(),
     });
-
-    this.fileLogger.log(message, 'Prisma');
   }
 }

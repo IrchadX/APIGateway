@@ -8,14 +8,10 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { FluentLogger } from './fluent-logger.service';
-import { FileLoggerService } from './file-logger.service';
 
 @Injectable()
 export class PerformanceInterceptor implements NestInterceptor {
-  constructor(
-    private readonly fluentLogger: FluentLogger,
-    private readonly fileLogger: FileLoggerService,
-  ) {
+  constructor(private readonly fluentLogger: FluentLogger) {
     // Log when the interceptor is created to verify it's working
     console.log('[PerformanceInterceptor] Initialized');
     this.fluentLogger.log('PerformanceInterceptor initialized', 'Interceptor');
@@ -140,13 +136,10 @@ export class PerformanceInterceptor implements NestInterceptor {
     try {
       if (level === 'warn') {
         this.fluentLogger.warn(message, 'Performance', perfData);
-        this.fileLogger.warn(message, 'Performance');
       } else if (level === 'error') {
         this.fluentLogger.error(message, '', 'Performance', perfData);
-        this.fileLogger.error(message, '', 'Performance');
       } else {
         this.fluentLogger.log(message, 'Performance', perfData);
-        this.fileLogger.log(message, 'Performance');
       }
     } catch (error) {
       console.error(

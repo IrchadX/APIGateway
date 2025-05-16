@@ -8,14 +8,10 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { FluentLogger } from './fluent-logger.service';
-import { FileLoggerService } from './file-logger.service';
 
 @Injectable()
 export class RequestLoggingInterceptor implements NestInterceptor {
-  constructor(
-    private readonly fluentLogger: FluentLogger,
-    private readonly fileLogger: FileLoggerService,
-  ) {}
+  constructor(private readonly fluentLogger: FluentLogger) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     if (context.getType() !== 'http') {
@@ -93,7 +89,6 @@ export class RequestLoggingInterceptor implements NestInterceptor {
   private logRequest(requestData: any) {
     const logMessage = `Incoming request: ${requestData.method} ${requestData.url}`;
     this.fluentLogger.log(logMessage, 'HTTP Request', requestData);
-    this.fileLogger.log(logMessage, 'HTTP Request');
   }
 
   private logResponse(responseData: any) {
@@ -108,14 +103,8 @@ export class RequestLoggingInterceptor implements NestInterceptor {
         responseData.error?.stack,
         'HTTP Response',
       );
-      this.fileLogger.error(
-        logMessage,
-        responseData.error?.stack,
-        'HTTP Response',
-      );
     } else {
       this.fluentLogger.log(logMessage, 'HTTP Response', responseData);
-      this.fileLogger.log(logMessage, 'HTTP Response');
     }
   }
 }

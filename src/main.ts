@@ -6,7 +6,6 @@ import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   try {
-    // Initialize console logger first for bootstrap errors
     console.log('\n[BOOTSTRAP] Starting application...');
     console.log(
       '[BOOTSTRAP] Environment:',
@@ -15,14 +14,13 @@ async function bootstrap() {
 
     const app = await NestFactory.create(AppModule, {
       bufferLogs: true,
-      abortOnError: false, // Prevent Nest from crashing on initialization errors
+      abortOnError: false,
     });
 
     // Get logger instance
     const logger = app.get(FluentLogger);
     app.useLogger(logger);
 
-    // Error handling for Prisma
     try {
       const prismaService = app.get(PrismaService);
       await prismaService.enableShutdownHooks(app);
@@ -34,10 +32,8 @@ async function bootstrap() {
         prismaError?.stack || prismaError?.message || 'Unknown Prisma error',
         'Bootstrap',
       );
-      // Continue without Prisma if it's not critical for your app
     }
 
-    // Enable CORS
     app.enableCors({
       origin: true,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -61,7 +57,6 @@ async function bootstrap() {
       process.exit(0);
     });
   } catch (error) {
-    // Robust error handling
     const errorMessage =
       error instanceof Error
         ? `${error.message}\nStack Trace: ${error.stack}`
@@ -69,7 +64,6 @@ async function bootstrap() {
 
     console.error('[FATAL] Bootstrap failed:', errorMessage);
 
-    // If logger is available, use it
     try {
       const tempLogger = new FluentLogger(new ConfigService());
       tempLogger.error('Bootstrap failed', errorMessage, 'Bootstrap');
