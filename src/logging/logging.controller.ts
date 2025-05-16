@@ -6,7 +6,7 @@ import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
 
 @Controller('logs')
-export class LogsController {
+export class LoggingController {
   private readonly logDir: string;
 
   constructor(private configService: ConfigService) {
