@@ -7,12 +7,8 @@ ENV APPLICATION_ENV=production
 ENV FLUENT_HOST=localhost
 ENV FLUENT_PORT=24224
 
-# Set consistent log directory
+# Set consistent log directory - single source of truth
 ENV LOG_DIR=/app/logs
-
-# Create log directory with proper permissions
-RUN mkdir -p /app/logs && chmod 777 /app/logs
-
 
 # Set up working directory
 WORKDIR /usr/src/app
@@ -27,11 +23,8 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create directories for Fluent Bit configuration and logs
-RUN mkdir -p /fluent-bit/etc /fluent-bit/logs
-RUN chmod 755 /fluent-bit/logs
-
-RUN npm install winston 
+# Create standardized log directory and set permissions
+RUN mkdir -p ${LOG_DIR} && chmod 777 ${LOG_DIR}
 
 # Install NestJS CLI globally
 RUN npm install -g @nestjs/cli
@@ -40,11 +33,9 @@ RUN npm install -g @nestjs/cli
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install archiver for zip functionality
-RUN npm install archiver
-
-# Install all dependencies (including dev dependencies needed for Prisma)
+# Install dependencies
 RUN npm ci
+RUN npm install winston archiver
 
 # Generate Prisma client during build
 RUN npx prisma generate
@@ -59,40 +50,42 @@ RUN npm run build
 COPY fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
 COPY fluent-bit/parsers.conf /fluent-bit/etc/parsers.conf
 
-EXPOSE 3512 
-# NestJS app port
-EXPOSE 24224 
-# HTTP input port
-EXPOSE 24225 
-# Forward input port
-EXPOSE 2020 
-# Fluent Bit API port
-
-# Set log directory environment variable for NestJS
-ENV LOG_DIR=/logs
-
-# Start both services using a startup script
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
+EXPOSE 3512 # NestJS app port
+EXPOSE 24224 # HTTP input port
+EXPOSE 24225 # Forward input port
+EXPOSE 2020 # Fluent Bit API port
 
 # Create improved startup script with better error handling and Prisma re-generation
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
 echo "Starting containers with NODE_ENV=$NODE_ENV"\n\
+echo "Using log directory: $LOG_DIR"\n\
 \n\
 # Regenerate Prisma client on startup to ensure it matches the environment\n\
 echo "Regenerating Prisma client..."\n\
 npx prisma generate\n\
 \n\
 # Ensure log directory exists and has proper permissions\n\
-mkdir -p /fluent-bit/logs\n\
-chmod 755 /fluent-bit/logs\n\
+mkdir -p ${LOG_DIR}\n\
+chmod 777 ${LOG_DIR}\n\
 \n\
-# Also create local logs directory for application file logging\n\
-mkdir -p /usr/src/app/logs\n\
-chmod 755 /usr/src/app/logs\n\
+# Check if the log directory is writable\n\
+if [ ! -w "${LOG_DIR}" ]; then\n\
+  echo "ERROR: Log directory ${LOG_DIR} is not writable!"\n\
+  ls -la ${LOG_DIR}\n\
+  exit 1\n\
+fi\n\
+\n\
+# Create a test file to ensure directory is writable\n\
+echo "Testing log directory write permissions..."\n\
+touch ${LOG_DIR}/test.log && rm ${LOG_DIR}/test.log\n\
+if [ $? -ne 0 ]; then\n\
+  echo "ERROR: Could not write to log directory!"\n\
+  exit 1\n\
+else\n\
+  echo "Log directory is writable."\n\
+fi\n\
 \n\
 # Start Fluent Bit in the background\n\
 echo "Starting Fluent Bit..."\n\
@@ -122,33 +115,32 @@ check_process() {\n\
 \n\
 # Function to rotate logs if needed\n\
 rotate_logs() {\n\
-  # Get size of application.log in MB\n\
-  if [ -f "/fluent-bit/logs/application.log" ]; then\n\
-    SIZE=$(du -m "/fluent-bit/logs/application.log" | cut -f1)\n\
-    \n\
-    # If larger than 100MB, rotate\n\
-    if [ "$SIZE" -gt 100 ]; then\n\
-      echo "Rotating logs - application.log has grown to ${SIZE}MB"\n\
-      TIMESTAMP=$(date +"%Y%m%d_%H%M%S")\n\
-      mv "/fluent-bit/logs/application.log" "/fluent-bit/logs/application_${TIMESTAMP}.log"\n\
+  # Get size of log files in MB\n\
+  for LOG_FILE in ${LOG_DIR}/*.log; do\n\
+    if [ -f "$LOG_FILE" ]; then\n\
+      FILENAME=$(basename "$LOG_FILE")\n\
+      SIZE=$(du -m "$LOG_FILE" | cut -f1)\n\
       \n\
-      # Signal Fluent Bit to reopen log files\n\
-      if check_process $FLUENT_PID; then\n\
-        kill -USR1 $FLUENT_PID\n\
+      # If larger than 100MB, rotate\n\
+      if [ "$SIZE" -gt 100 ]; then\n\
+        echo "Rotating logs - $FILENAME has grown to ${SIZE}MB"\n\
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")\n\
+        mv "$LOG_FILE" "${LOG_DIR}/${FILENAME%.*}_${TIMESTAMP}.log"\n\
       fi\n\
     fi\n\
-  fi\n\
+  done\n\
   \n\
-  # Also rotate application logs if needed\n\
-  if [ -f "/usr/src/app/logs/application.log" ]; then\n\
-    SIZE=$(du -m "/usr/src/app/logs/application.log" | cut -f1)\n\
-    \n\
-    if [ "$SIZE" -gt 100 ]; then\n\
-      echo "Rotating logs - application file log has grown to ${SIZE}MB"\n\
-      TIMESTAMP=$(date +"%Y%m%d_%H%M%S")\n\
-      mv "/usr/src/app/logs/application.log" "/usr/src/app/logs/application_${TIMESTAMP}.log"\n\
-    fi\n\
+  # Signal Fluent Bit to reopen log files\n\
+  if check_process $FLUENT_PID; then\n\
+    echo "Sending signal to Fluent Bit to reload..."\n\
+    kill -USR1 $FLUENT_PID\n\
   fi\n\
+}\n\
+\n\
+# List contents of log directory every minute for debugging\n\
+list_logs() {\n\
+  echo "Current log files in ${LOG_DIR}:"\n\
+  ls -la ${LOG_DIR}\n\
 }\n\
 \n\
 # Monitor both processes and handle log rotation\n\
@@ -175,26 +167,13 @@ while true; do\n\
     rotate_logs\n\
   fi\n\
 \n\
+  # List logs every minute for debugging\n\
+  list_logs\n\
+\n\
   # Sleep before checking again\n\
   sleep 60\n\
 done\n' > /usr/src/app/start.sh && \
     chmod +x /usr/src/app/start.sh
 
-
-# Copy and configure log rotation scripts
-COPY scripts/rotate-logs.sh /usr/local/bin/rotate-logs
-COPY scripts/start-services.sh /usr/local/bin/start-services
-
-# Make scripts executable
-RUN chmod +x /usr/local/bin/rotate-logs /usr/local/bin/start-services
-
-
-# Set up cron job for log rotation
-RUN echo "0 * * * * root /usr/local/bin/rotate-logs >> /logs/rotation.log 2>&1" > /etc/cron.d/log-rotation
-RUN chmod 0644 /etc/cron.d/log-rotation
-
-# Create symlink for cron logs
-RUN ln -sf /dev/stdout /var/log/cron.log
-
-# Command to run the startup script heheh 
+# Command to run the startup script
 CMD ["/usr/src/app/start.sh"]
