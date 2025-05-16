@@ -6,7 +6,6 @@ import { Request } from 'express';
 import { Observable, catchError, tap } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { FluentLogger } from 'src/logging/fluent-logger.service';
-import { FileLoggerService } from 'src/logging/file-logger.service';
 
 interface AuthenticatedUser {
   sub: string;
@@ -20,7 +19,6 @@ export class ProxyService {
     private readonly httpService: HttpService,
     @Inject('WEB_BACKEND_URL') private readonly webBackendUrl: string,
     private readonly fluentLogger: FluentLogger,
-    private readonly fileLogger: FileLoggerService,
   ) {}
 
   proxyRequest(
