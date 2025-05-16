@@ -65,7 +65,6 @@ export class ProxyService {
             status: response.status,
             responseTime,
           });
-          this.fileLogger.log(message, logLabel);
         }),
         catchError((error) => {
           const responseTime = Date.now() - startTime;
@@ -82,8 +81,6 @@ export class ProxyService {
             responseTime,
             error: errorInfo,
           });
-
-          this.fileLogger.error(message, error.stack, logLabel);
 
           throw error;
         }),
