@@ -1,4 +1,30 @@
 #!/bin/bash
+
+#!/bin/bash
+# Add this at the beginning of your start.sh script
+
+# Debugging logging
+echo "==== DEBUGGING INFORMATION ===="
+echo "Current user: $(whoami)"
+echo "Current directory: $(pwd)"
+echo "LOG_DIR value: $LOG_DIR"
+echo "Checking log directory permission and existence"
+mkdir -p ${LOG_DIR}
+chmod 777 ${LOG_DIR}
+ls -la ${LOG_DIR}
+echo "Testing log file creation..."
+touch ${LOG_DIR}/test_file.log
+if [ $? -eq 0 ]; then
+  echo "Successfully created test file"
+  cat "Test content" > ${LOG_DIR}/test_file.log
+  echo "Written test content to file"
+  cat ${LOG_DIR}/test_file.log
+  echo "File content displayed successfully"
+  rm ${LOG_DIR}/test_file.log
+else
+  echo "Failed to create test file"
+fi
+echo "============================="
 # Ensure log directory exists with correct permissions
 LOG_DIR="/app/logs"
 mkdir -p "$LOG_DIR"

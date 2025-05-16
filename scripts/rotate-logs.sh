@@ -40,7 +40,7 @@ rotate_logs "$LOG_DIR/fluent_all.log"
 rotate_logs "$LOG_DIR/fluent_error.log"
 rotate_logs "$LOG_DIR/fluent_info.log"
 rotate_logs "$LOG_DIR/fluent_warn.log"
-
+ 
 # Rotate application logs
 rotate_logs "$LOG_DIR/application.log"
 

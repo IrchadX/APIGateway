@@ -1,21 +1,27 @@
-// src/logging/fluent-logger.service.ts
-import { Injectable, LoggerService } from '@nestjs/common';
+// Modifications to add to src/logging/fluent-logger.service.ts
+import { Injectable, LoggerService, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
 import 'winston-daily-rotate-file';
 import { inspect } from 'util';
 import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
-export class FluentLogger implements LoggerService {
+export class FluentLogger implements LoggerService, OnModuleInit {
   private logger: winston.Logger;
   private context: string = 'Application';
   private fluentEnabled: boolean = false;
   private fluentEndpoint: string;
   private axiosInstance;
   private appName: string;
+  private logDir: string;
 
   constructor(private configService: ConfigService) {
+    // Get the log directory
+    this.logDir = process.env.LOG_DIR || '/tmp/logs';
+
     // Initialize HTTP client for Fluent Bit
     this.axiosInstance = axios.create({
       timeout: 3000,
@@ -38,9 +44,49 @@ export class FluentLogger implements LoggerService {
     });
   }
 
+  async onModuleInit() {
+    // Test log directory access and writing capability
+    try {
+      // Ensure log directory exists
+      if (!fs.existsSync(this.logDir)) {
+        console.log(`Creating log directory: ${this.logDir}`);
+        try {
+          fs.mkdirSync(this.logDir, { recursive: true });
+        } catch (error) {
+          console.error(`Failed to create log directory: ${error.message}`);
+        }
+      }
+
+      // Test writing to log directory
+      const testFile = path.join(this.logDir, 'test_logger.log');
+      console.log(`Testing file write to: ${testFile}`);
+      fs.writeFileSync(testFile, 'Logger initialization test', 'utf8');
+      console.log('Successfully wrote test file');
+
+      // Clean up test file
+      fs.unlinkSync(testFile);
+      console.log('Successfully cleaned up test file');
+
+      // List directory contents
+      console.log(
+        `Log directory contents: ${fs.readdirSync(this.logDir).join(', ')}`,
+      );
+    } catch (error) {
+      console.error(`Logger initialization error: ${error.message}`);
+      console.error(`Current process user: ${process.getuid?.() || 'unknown'}`);
+      console.error(
+        `Log directory permissions: ${
+          fs.existsSync(this.logDir)
+            ? fs.statSync(this.logDir).mode.toString(8)
+            : 'directory does not exist'
+        }`,
+      );
+    }
+  }
+
   private configureFluentBit() {
     this.fluentEnabled =
-      this.configService.get<string>('FLUENT_ENABLED') === 'true';
+      this.configService.get<string>('FLUENT_ENABLED') !== 'false'; // Default to enabled
 
     if (this.fluentEnabled) {
       const fluentHost =

@@ -16,13 +16,32 @@ export class LogsController {
   private readonly logDir: string;
 
   constructor(private configService: ConfigService) {
-    // Change this to use the absolute path directly
-    this.logDir = this.configService.get('LOG_DIR') || '/app/logs';
+    // Use the LOG_DIR environment variable
+    this.logDir = process.env.LOG_DIR || '/tmp/logs';
+    console.log(
+      `Logs controller initialized with log directory: ${this.logDir}`,
+    );
   }
 
   @Get('/logs')
   getLogs(): string {
-    return readFileSync('/tmp/fluent_all.log', 'utf-8');
+    try {
+      const logPath = path.join(this.logDir, 'fluent_all.log');
+      console.log(`Attempting to read log file at: ${logPath}`);
+
+      if (!fs.existsSync(logPath)) {
+        return `Log file not found at ${logPath}. Available files in ${this.logDir}: ${
+          fs.existsSync(this.logDir)
+            ? fs.readdirSync(this.logDir).join(', ')
+            : 'directory does not exist'
+        }`;
+      }
+
+      return readFileSync(logPath, 'utf-8');
+    } catch (error) {
+      console.error('Error reading logs:', error);
+      return `Error reading logs: ${error.message}`;
+    }
   }
 
   @Get('download')
@@ -79,7 +98,7 @@ export class LogsController {
       } else {
         // Default: download the latest application log
         const latestLog =
-          logFiles.find((file) => file.includes('application')) || logFiles[0];
+          logFiles.find((file) => file.includes('fluent')) || logFiles[0];
         const filePath = path.join(this.logDir, latestLog);
 
         if (latestLog.endsWith('.gz')) {
