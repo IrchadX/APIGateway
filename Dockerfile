@@ -13,8 +13,7 @@ ENV LOG_DIR=/app/logs
 # Create log directory with proper permissions
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 
-# Ensure your start script creates the directory too
-RUN echo 'mkdir -p /app/logs && chmod 777 /app/logs' >> /usr/src/app/start.sh
+
 # Set up working directory
 WORKDIR /usr/src/app
 
