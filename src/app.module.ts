@@ -6,7 +6,7 @@ import { AppController } from './app.controller';
 import { ProxyService } from './proxy/proxy.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { LoggingModule } from './logging/logging.module';
-
+import { LoggingController } from './logging/logging.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -17,7 +17,7 @@ import { LoggingModule } from './logging/logging.module';
     HttpModule,
     AuthModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, LoggingController],
   providers: [
     {
       provide: 'WEB_BACKEND_URL',
