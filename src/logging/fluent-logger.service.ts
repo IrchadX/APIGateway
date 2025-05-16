@@ -133,9 +133,10 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     try {
       const tag = `app.${level.toLowerCase()}`; // Changed from ${appName}.level
 
+      console.log(tag);
       const payload = {
-        // Remove the outer tag since we're using HTTP input
         ...data,
+        tag: tag,
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(), // Ensure level is included in the payload
       };

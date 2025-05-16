@@ -23,10 +23,73 @@ export class LogsController {
     );
   }
 
-  @Get('/logs')
+  @Get('/all')
   getLogs(): string {
     try {
       const logPath = path.join(this.logDir, 'fluent_all.log');
+      console.log(`Attempting to read log file at: ${logPath}`);
+
+      if (!fs.existsSync(logPath)) {
+        return `Log file not found at ${logPath}. Available files in ${this.logDir}: ${
+          fs.existsSync(this.logDir)
+            ? fs.readdirSync(this.logDir).join(', ')
+            : 'directory does not exist'
+        }`;
+      }
+
+      return readFileSync(logPath, 'utf-8');
+    } catch (error) {
+      console.error('Error reading logs:', error);
+      return `Error reading logs: ${error.message}`;
+    }
+  }
+
+  @Get('/warn')
+  getWarnLogs(): string {
+    try {
+      const logPath = path.join(this.logDir, 'fluent_warn.log');
+      console.log(`Attempting to read log file at: ${logPath}`);
+
+      if (!fs.existsSync(logPath)) {
+        return `Log file not found at ${logPath}. Available files in ${this.logDir}: ${
+          fs.existsSync(this.logDir)
+            ? fs.readdirSync(this.logDir).join(', ')
+            : 'directory does not exist'
+        }`;
+      }
+
+      return readFileSync(logPath, 'utf-8');
+    } catch (error) {
+      console.error('Error reading logs:', error);
+      return `Error reading logs: ${error.message}`;
+    }
+  }
+
+  @Get('/error')
+  getErrorLogs(): string {
+    try {
+      const logPath = path.join(this.logDir, 'fluent_error.log');
+      console.log(`Attempting to read log file at: ${logPath}`);
+
+      if (!fs.existsSync(logPath)) {
+        return `Log file not found at ${logPath}. Available files in ${this.logDir}: ${
+          fs.existsSync(this.logDir)
+            ? fs.readdirSync(this.logDir).join(', ')
+            : 'directory does not exist'
+        }`;
+      }
+
+      return readFileSync(logPath, 'utf-8');
+    } catch (error) {
+      console.error('Error reading logs:', error);
+      return `Error reading logs: ${error.message}`;
+    }
+  }
+
+  @Get('/info')
+  getInfoLogs(): string {
+    try {
+      const logPath = path.join(this.logDir, 'fluent_info.log');
       console.log(`Attempting to read log file at: ${logPath}`);
 
       if (!fs.existsSync(logPath)) {
