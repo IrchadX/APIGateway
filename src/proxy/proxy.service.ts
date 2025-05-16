@@ -18,15 +18,35 @@ export class ProxyService {
   constructor(
     private readonly httpService: HttpService,
     @Inject('WEB_BACKEND_URL') private readonly webBackendUrl: string,
+    @Inject('MOBILE_BACKEND_URL') private readonly mobileBackendUrl: string,
     private readonly fluentLogger: FluentLogger,
   ) {}
 
+  handleRequest(request: Request): Observable<AxiosResponse<any>> {
+    const url = request.originalUrl;
+
+    if (url.startsWith('/api/v1/web')) {
+      return this.proxyRequest(request, this.webBackendUrl, '/api/v1/web');
+    }
+
+    if (url.startsWith('/api/v1/mobile')) {
+      return this.proxyRequest(
+        request,
+        this.mobileBackendUrl,
+        '/api/v1/mobile',
+      );
+    }
+
+    throw new Error(`Unsupported route: ${url}`);
+  }
   proxyRequest(
     request: Request,
+    targetBaseUrl: string,
+    stripPrefix: string,
     includeCookies = true,
-  ): Observable<AxiosResponse> {
-    const pathWithoutPrefix = request.originalUrl.replace(/^\/api/, '');
-    const url = `${this.webBackendUrl}${pathWithoutPrefix}`;
+  ): Observable<AxiosResponse<any>> {
+    const pathWithoutPrefix = request.originalUrl.replace(stripPrefix, '');
+    const url = `${targetBaseUrl}${pathWithoutPrefix}`;
     const headers = this.cleanHeaders(request.headers);
 
     if (includeCookies && request.headers.cookie) {
