@@ -1,4 +1,3 @@
-// Modifications to add to src/logging/fluent-logger.service.ts
 import { Injectable, LoggerService, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as winston from 'winston';
@@ -20,7 +19,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
   constructor(private configService: ConfigService) {
     // Get the log directory
-    this.logDir = process.env.LOG_DIR || '/tmp/logs';
+    this.logDir = process.env.LOG_DIR || '/tmp/';
 
     // Initialize HTTP client for Fluent Bit
     this.axiosInstance = axios.create({
@@ -71,6 +70,15 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       console.log(
         `Log directory contents: ${fs.readdirSync(this.logDir).join(', ')}`,
       );
+
+      // Test Fluent Bit connection
+      if (this.fluentEnabled) {
+        await this.sendToFluentBit('info', {
+          message: 'Logger initialization successful',
+          context: this.context,
+        });
+        console.log('Successfully sent test message to Fluent Bit');
+      }
     } catch (error) {
       console.error(`Logger initialization error: ${error.message}`);
       console.error(`Current process user: ${process.getuid?.() || 'unknown'}`);
@@ -93,19 +101,11 @@ export class FluentLogger implements LoggerService, OnModuleInit {
         this.configService.get<string>('FLUENT_HOST') || 'localhost';
       const fluentPort =
         this.configService.get<string>('FLUENT_PORT') || '24224';
-      const fluentHttpPort =
-        this.configService.get<string>('FLUENT_HTTP_PORT') || '9880';
 
-      // Choose either HTTP or TCP endpoint
-      const useHttp =
-        this.configService.get<string>('FLUENT_USE_HTTP') === 'true';
-      this.fluentEndpoint = useHttp
-        ? `http://${fluentHost}:${fluentHttpPort}/nest`
-        : `http://${fluentHost}:${fluentPort}`; // Still using http for consistency
+      // Always use HTTP endpoint in this configuration
+      this.fluentEndpoint = `http://${fluentHost}:${fluentPort}`;
 
-      console.log(
-        `Fluent Bit logging ${useHttp ? 'HTTP' : 'TCP'} endpoint: ${this.fluentEndpoint}`,
-      );
+      console.log(`Fluent Bit logging endpoint: ${this.fluentEndpoint}`);
     }
   }
 
@@ -131,59 +131,69 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     if (!this.fluentEnabled) return;
 
     try {
+      // Create the exact tag format that Fluent Bit expects (app.level)
       const tag = `app.${level.toLowerCase()}`;
 
-      console.log(tag);
       const payload = {
         ...data,
+        // IMPORTANT: Include tag in the payload - Fluent Bit will use Tag_Key to extract it
         tag: tag,
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(),
+        app_name: this.appName,
       };
 
+      // Send to Fluent Bit's configured HTTP endpoint
       await this.axiosInstance.post(this.fluentEndpoint, payload);
+
+      // Debug logging for development
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug(`Sent log to Fluent Bit: ${tag}`, {
+          endpoint: this.fluentEndpoint,
+          tag,
+          level,
+        });
+      }
     } catch (error) {
       console.error('Failed to send log to Fluent Bit:', error.message);
     }
   }
+
   // Modified log methods to include Fluent Bit forwarding
   log(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
     const logData = {
-      message,
+      message: this.formatLogMessage(message),
       context: logContext,
-      level: 'info',
       ...(meta[0] || {}),
     };
 
-    this.logger.info(message, logData);
+    this.logger.info(message, { context: logContext, ...meta[0] });
     this.sendToFluentBit('info', logData);
   }
 
   error(message: any, trace?: string, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
     const logData = {
-      message,
+      message: this.formatLogMessage(message),
       trace,
       context: logContext,
-      level: 'error',
       ...(meta[0] || {}),
     };
 
-    this.logger.error(message, logData);
+    this.logger.error(message, { trace, context: logContext, ...meta[0] });
     this.sendToFluentBit('error', logData);
   }
 
   warn(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
     const logData = {
-      message,
+      message: this.formatLogMessage(message),
       context: logContext,
-      level: 'warn',
       ...(meta[0] || {}),
     };
 
-    this.logger.warn(message, logData);
+    this.logger.warn(message, { context: logContext, ...meta[0] });
     this.sendToFluentBit('warn', logData);
   }
 
@@ -191,19 +201,13 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     try {
       const logContext = context || this.context;
       const logData = {
-        message,
+        message: this.formatLogMessage(message),
         context: logContext,
-        level: 'debug',
         ...(meta[0] || {}),
       };
 
-      this.logger.debug(message, logData);
+      this.logger.debug(message, { context: logContext, ...meta[0] });
       this.sendToFluentBit('debug', logData);
-
-      // Also log debug to console during development
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug(`[${logContext}] DEBUG: ${message}`);
-      }
     } catch (error) {
       console.error('Error in FluentLogger.debug:', error);
       console.debug(`[${context || this.context}] DEBUG: ${message}`);
@@ -214,18 +218,24 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     try {
       const logContext = context || this.context;
       const logData = {
-        message,
+        message: this.formatLogMessage(message),
         context: logContext,
-        level: 'verbose',
         ...(meta[0] || {}),
       };
 
-      this.logger.verbose(message, logData);
+      this.logger.verbose(message, { context: logContext, ...meta[0] });
       this.sendToFluentBit('verbose', logData);
     } catch (error) {
       console.error('Error in FluentLogger.verbose:', error);
       console.log(`[${context || this.context}] VERBOSE: ${message}`);
     }
+  }
+
+  private formatLogMessage(message: any): string {
+    if (typeof message === 'object') {
+      return JSON.stringify(message);
+    }
+    return String(message);
   }
 
   isInitialized(): boolean {
