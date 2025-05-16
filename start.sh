@@ -1,4 +1,14 @@
 #!/bin/bash
+# Ensure log directory exists with correct permissions
+LOG_DIR="/app/logs"
+mkdir -p "$LOG_DIR"
+chmod -R 777 "$LOG_DIR"
+
+# Verify permissions by creating a test file
+echo "Testing log directory at $(date)" > "$LOG_DIR/permission_test.log"
+cat "$LOG_DIR/permission_test.log"
+rm "$LOG_DIR/permission_test.log"
+
 mkdir -p /app/logs
 chmod 777 /app/logs
 
