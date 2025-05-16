@@ -1,7 +1,6 @@
 #!/bin/bash
-# Make sure log directory exists and has proper permissions
-mkdir -p /logs
-chmod 777 /logs
+mkdir -p /app/logs
+chmod 777 /app/logs
 
 # Start Fluent Bit in the background
 /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf &

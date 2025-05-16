@@ -16,10 +16,8 @@ export class LogsController {
   private readonly logDir: string;
 
   constructor(private configService: ConfigService) {
-    this.logDir = path.join(
-      process.cwd(),
-      this.configService.get('LOG_DIR') || 'logs',
-    );
+    // Change this to use the absolute path directly
+    this.logDir = this.configService.get('LOG_DIR') || '/app/logs';
   }
 
   @Get('download')
@@ -30,7 +28,7 @@ export class LogsController {
   ) {
     try {
       if (!fs.existsSync(this.logDir)) {
-        return res.status(404).send('Log directory not found');
+        return res.status(404).send(`Log directory not found: ${this.logDir}`);
       }
 
       const logFiles = fs
@@ -40,7 +38,7 @@ export class LogsController {
         .reverse();
 
       if (logFiles.length === 0) {
-        return res.status(404).send('No log files found');
+        return res.status(404).send(`No log files found in ${this.logDir}`);
       }
 
       if (all === 'true') {
@@ -89,7 +87,7 @@ export class LogsController {
       }
     } catch (error) {
       console.error('Log download error:', error);
-      return res.status(500).send('Failed to download logs');
+      return res.status(500).send(`Failed to download logs: ${error.message}`);
     }
   }
 
@@ -97,7 +95,7 @@ export class LogsController {
   listLogs() {
     try {
       if (!fs.existsSync(this.logDir)) {
-        return { error: 'Log directory not found' };
+        return { error: `Log directory not found: ${this.logDir}` };
       }
 
       const files = fs
@@ -118,7 +116,7 @@ export class LogsController {
         downloadAll: '/logs/download?all=true',
       };
     } catch (error) {
-      return { error: error.message };
+      return { error: error.message, directory: this.logDir };
     }
   }
 }
