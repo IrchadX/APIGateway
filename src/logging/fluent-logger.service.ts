@@ -131,14 +131,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     if (!this.fluentEnabled) return;
 
     try {
-      const tag = `app.${level.toLowerCase()}`; // Changed from ${appName}.level
+      const tag = `app.${level.toLowerCase()}`;
 
       console.log(tag);
       const payload = {
         ...data,
         tag: tag,
         timestamp: new Date().toISOString(),
-        level: level.toLowerCase(), // Ensure level is included in the payload
+        level: level.toLowerCase(),
       };
 
       await this.axiosInstance.post(this.fluentEndpoint, payload);
@@ -152,7 +152,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message,
       context: logContext,
-      level: 'app.info',
+      level: 'info',
       ...(meta[0] || {}),
     };
 
@@ -166,7 +166,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       message,
       trace,
       context: logContext,
-      level: 'app.error',
+      level: 'error',
       ...(meta[0] || {}),
     };
 
@@ -179,7 +179,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message,
       context: logContext,
-      level: 'app.warn',
+      level: 'warn',
       ...(meta[0] || {}),
     };
 
@@ -193,7 +193,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message,
         context: logContext,
-        level: 'app.debug',
+        level: 'debug',
         ...(meta[0] || {}),
       };
 
@@ -216,7 +216,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message,
         context: logContext,
-        level: 'app.verbose',
+        level: 'verbose',
         ...(meta[0] || {}),
       };
 
