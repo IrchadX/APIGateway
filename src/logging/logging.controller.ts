@@ -20,6 +20,11 @@ export class LogsController {
     this.logDir = this.configService.get('LOG_DIR') || '/app/logs';
   }
 
+  @Get('/logs')
+  getLogs(): string {
+    return readFileSync('/tmp/fluent_all.log', 'utf-8');
+  }
+
   @Get('download')
   async downloadLogs(
     @Res() res: Response,

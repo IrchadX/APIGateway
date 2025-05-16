@@ -8,7 +8,7 @@ ENV FLUENT_HOST=localhost
 ENV FLUENT_PORT=24224
 
 # Set consistent log directory - single source of truth
-ENV LOG_DIR=/app/logs
+ENV LOG_DIR=/tmp
 
 # Set up working directory
 WORKDIR /usr/src/app
