@@ -6,93 +6,70 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class FileLoggerService implements LoggerService {
-  private logStream: fs.WriteStream;
   private readonly logDir: string;
   private readonly logFile: string;
   private readonly enableFileLogging: boolean;
 
   constructor(private configService: ConfigService) {
     this.enableFileLogging =
-      this.configService.get('ENABLE_FILE_LOGGING') === 'true';
-    this.logDir = this.configService.get('LOG_DIR') || 'logs';
+      this.configService.get('ENABLE_FILE_LOGGING') !== 'false';
+    this.logDir = path.join(
+      process.cwd(),
+      this.configService.get('LOG_DIR') || 'logs',
+    );
     this.logFile = path.join(this.logDir, 'application.log');
 
-    if (this.enableFileLogging) {
-      this.initializeFileLogging();
+    this.ensureLogDirectory();
+  }
+
+  private ensureLogDirectory() {
+    if (this.enableFileLogging && !fs.existsSync(this.logDir)) {
+      fs.mkdirSync(this.logDir, { recursive: true });
+      fs.chmodSync(this.logDir, 0o777); // Ensure writable
     }
   }
 
-  private initializeFileLogging() {
-    try {
-      // Create log directory if it doesn't exist
-      if (!fs.existsSync(this.logDir)) {
-        fs.mkdirSync(this.logDir, { recursive: true });
-      }
-
-      // Open log file stream with error handling
-      this.logStream = fs.createWriteStream(this.logFile, {
-        flags: 'a',
-        emitClose: true,
-      });
-
-      this.logStream.on('error', (err) => {
-        console.error('Log file stream error:', err);
-      });
-    } catch (err) {
-      console.error('Failed to initialize file logging:', err);
-    }
-  }
-
-  log(message: string, context?: string) {
-    this.writeLog('INFO', message, context);
-  }
-
-  error(message: string, trace?: string, context?: string) {
-    this.writeLog('ERROR', message, context, trace);
-  }
-
-  warn(message: string, context?: string) {
-    this.writeLog('WARN', message, context);
-  }
-
-  debug(message: string, context?: string) {
-    this.writeLog('DEBUG', message, context);
-  }
-
-  verbose(message: string, context?: string) {
-    this.writeLog('VERBOSE', message, context);
-  }
-
-  private writeLog(
+  private writeToFile(
     level: string,
     message: string,
     context?: string,
     trace?: string,
   ) {
-    const timestamp = new Date().toISOString();
+    if (!this.enableFileLogging) return;
+
     const logEntry = JSON.stringify({
-      timestamp,
+      timestamp: new Date().toISOString(),
       level,
       context: context || 'Application',
       message,
       ...(trace && { trace }),
     });
 
-    // Conditionally log to file
-    if (this.enableFileLogging && this.logStream) {
-      try {
-        this.logStream.write(`${logEntry}\n`);
-      } catch (error) {
-        console.error('File write error:', error);
-      }
+    try {
+      fs.appendFileSync(this.logFile, `${logEntry}\n`, { flag: 'a' });
+    } catch (error) {
+      console.error('Failed to write log:', error);
     }
   }
 
-  async onModuleDestroy() {
-    if (this.logStream) {
-      await new Promise((resolve) => {
-        this.logStream.end(resolve);
-      });
-    }
+  // Implement LoggerService methods
+  log(message: string, context?: string) {
+    this.writeToFile('INFO', message, context);
+  }
+
+  error(message: string, trace?: string, context?: string) {
+    this.writeToFile('ERROR', message, context, trace);
+  }
+
+  warn(message: string, context?: string) {
+    this.writeToFile('WARN', message, context);
+  }
+
+  debug(message: string, context?: string) {
+    this.writeToFile('DEBUG', message, context);
+  }
+
+  verbose(message: string, context?: string) {
+    this.writeToFile('VERBOSE', message, context);
   }
 }

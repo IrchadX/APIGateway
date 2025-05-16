@@ -6,8 +6,15 @@ ENV NODE_ENV=production
 ENV APPLICATION_ENV=production
 ENV FLUENT_HOST=localhost
 ENV FLUENT_PORT=24224
-ENV LOG_DIR=/fluent-bit/logs
 
+# Set consistent log directory
+ENV LOG_DIR=/app/logs
+
+# Create log directory with proper permissions
+RUN mkdir -p /app/logs && chmod 777 /app/logs
+
+# Ensure your start script creates the directory too
+RUN echo 'mkdir -p /app/logs && chmod 777 /app/logs' >> /usr/src/app/start.sh
 # Set up working directory
 WORKDIR /usr/src/app
 

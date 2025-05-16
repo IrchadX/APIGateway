@@ -1,8 +1,8 @@
 {
   "volumes": [
     {
-      "name": "logs",
-      "mountPath": "/usr/src/app/logs"
+      "name": "app-logs",
+      "mountPath": "/app/logs"
     }
   ]
 }
