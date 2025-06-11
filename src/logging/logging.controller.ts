@@ -57,7 +57,7 @@ export class LogsController {
             : 'directory does not exist'
         }`;
       }
-
+      
       return readFileSync(logPath, 'utf-8');
     } catch (error) {
       console.error('Error reading logs:', error);
