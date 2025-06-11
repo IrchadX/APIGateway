@@ -33,7 +33,7 @@ export class AppController {
     }
   }
 
-  @All(['api/v1/web/*', 'api/v1/mobile/*'])
+  @All(['api/v1/web/*','api/v1/web', 'api/v1/mobile/*'])
   async handleProxy(@Req() req: Request, @Res() res: Response) {
     try {
       const result = await firstValueFrom(
