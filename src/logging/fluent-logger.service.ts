@@ -16,72 +16,59 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   private axiosInstance;
   private appName: string;
   private logDir: string;
-  private lastErrorTime: number = 0; // Track last error time to avoid log spam
+  private lastErrorTime: number = 0;
 
   constructor(private configService: ConfigService) {
-    // Get the log directory
     this.logDir = process.env.LOG_DIR || '/tmp/logs';
 
-    // Initialize HTTP client for Fluent Bit
     this.axiosInstance = axios.create({
-      timeout: 1000, // Reduce timeout to fail faster
-      // Add retry logic
+      timeout: 1000,
       validateStatus: function (status) {
-        return status >= 200 && status < 500; // Handle anything but server errors
+        return status >= 200 && status < 500;
       },
     });
 
-    // Get app name for tagging
     this.appName = this.configService.get('APP_NAME') || 'nest';
-
-    // Configure Fluent Bit logging
     this.configureFluentBit();
 
+    // Create Winston logger with improved formatting
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
       transports: [
         this.createConsoleTransport(),
-        this.createFileTransport('info'),
-        this.createFileTransport('error'),
-        this.createFileTransport('warn'),
-        this.createFileTransport('debug'),
+        // Add file transport for better log management
+        this.createFileTransport(),
       ],
       format: winston.format.combine(
-        winston.format.timestamp(),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        winston.format.errors({ stack: true }),
         winston.format.json(),
       ),
     });
   }
 
   async onModuleInit() {
-    // Test log directory access and writing capability
+    // ... existing onModuleInit code remains the same
     try {
-      // Ensure log directory exists
       if (!fs.existsSync(this.logDir)) {
         console.log(`Creating log directory: ${this.logDir}`);
         try {
           fs.mkdirSync(this.logDir, { recursive: true });
-        } catch (error: any) {
+        } catch (error) {
           console.error(`Failed to create log directory: ${error.message}`);
         }
       }
 
-      // Test writing to log directory
       const testFile = path.join(this.logDir, 'test_logger.log');
       console.log(`Testing file write to: ${testFile}`);
       fs.writeFileSync(testFile, 'Logger initialization test', 'utf8');
       console.log('Successfully wrote test file');
-
-      // Clean up test file
       fs.unlinkSync(testFile);
       console.log('Successfully cleaned up test file');
-
-      // List directory contents
       console.log(
         `Log directory contents: ${fs.readdirSync(this.logDir).join(', ')}`,
       );
 
-      // Test Fluent Bit connection
       if (this.fluentEnabled) {
         await this.sendToFluentBit('info', {
           message: 'Logger initialization successful',
@@ -89,7 +76,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
         });
         console.log('Successfully sent test message to Fluent Bit');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Logger initialization error: ${error.message}`);
       console.error(`Current process user: ${process.getuid?.() || 'unknown'}`);
       console.error(
@@ -104,17 +91,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
   private configureFluentBit() {
     this.fluentEnabled =
-      this.configService.get<string>('FLUENT_ENABLED') !== 'false'; // Default to enabled
+      this.configService.get<string>('FLUENT_ENABLED') !== 'false';
 
     if (this.fluentEnabled) {
       const fluentHost =
         this.configService.get<string>('FLUENT_HOST') || 'localhost';
       const fluentPort =
         this.configService.get<string>('FLUENT_PORT') || '24224';
-
-      // Always use HTTP endpoint in this configuration
       this.fluentEndpoint = `http://${fluentHost}:${fluentPort}`;
-
       console.log(`Fluent Bit logging endpoint: ${this.fluentEndpoint}`);
     }
   }
@@ -122,53 +106,39 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   private createConsoleTransport() {
     return new winston.transports.Console({
       format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.colorize(),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        winston.format.colorize({ all: true }),
         winston.format.printf(
-          ({ timestamp, level, message, context, ...meta }) => {
-            return `${timestamp} [${context || this.context}] ${level}: ${message} ${
-              Object.keys(meta).length
-                ? inspect(meta, { depth: null, colors: true })
-                : ''
-            }`;
+          ({ timestamp, level, message, context, trace, ...meta }) => {
+            const ctx = context || this.context;
+            const metaStr = Object.keys(meta).length
+              ? ` ${inspect(meta, { depth: 2, colors: true, compact: true })}`
+              : '';
+            const traceStr = trace ? `\n${trace}` : '';
+
+            return `${timestamp} [${ctx}] ${level}: ${message}${metaStr}${traceStr}`;
           },
         ),
       ),
     });
   }
 
-  private createFileTransport(level: string) {
-    return new winston.transports.DailyRotateFile({
-      level: level,
-      filename: path.join(this.logDir, `${level}-%DATE%.log`),
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxSize: '20m',
-      maxFiles: '14d',
+  private createFileTransport() {
+    return new winston.transports.File({
+      filename: path.join(this.logDir, 'application.log'),
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 5,
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
         winston.format.printf(
           ({ timestamp, level, message, context, trace, ...meta }) => {
-            // Create a structured but readable format
-            const logEntry: Record<string, any> = {
-              timestamp,
-              level: level.toUpperCase(),
-              context: context || this.context,
-              app: this.appName,
-              message:
-                typeof message === 'object' ? JSON.stringify(message) : message,
-            };
+            const ctx = context || this.context;
+            const metaStr = Object.keys(meta).length
+              ? ` ${JSON.stringify(meta)}`
+              : '';
+            const traceStr = trace ? ` | trace: ${trace}` : '';
 
-            if (trace) {
-              logEntry.trace = trace;
-            }
-
-            if (Object.keys(meta).length > 0) {
-              logEntry.metadata = meta;
-            }
-
-            // Pretty print with proper indentation for readability
-            return JSON.stringify(logEntry, null, 2);
+            return `${timestamp} [${ctx}] ${level.toUpperCase()}: ${message}${metaStr}${traceStr}`;
           },
         ),
       ),
@@ -179,51 +149,37 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     if (!this.fluentEnabled) return;
 
     try {
-      // Create the exact tag format that Fluent Bit expects (app.level)
       const tag = `app.${level.toLowerCase()}`;
 
-      const payload: Record<string, any> = {
+      // Create a more structured payload
+      const payload = {
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(),
         app_name: this.appName,
         context: data.context || this.context,
         message: data.message,
+        ...(data.trace && { trace: data.trace }),
+        // Include any additional metadata
+        ...Object.fromEntries(
+          Object.entries(data).filter(
+            ([key]) => !['message', 'context', 'trace'].includes(key),
+          ),
+        ),
         tag: tag,
       };
 
-      // Include trace if present
-      if (data.trace) {
-        payload.trace = data.trace;
-      }
-
-      // Include any additional metadata
-      if (data.metadata) {
-        payload.metadata = data.metadata;
-      }
-
-      // Flatten any other properties
-      Object.keys(data).forEach((key) => {
-        if (!['message', 'context', 'trace', 'metadata'].includes(key)) {
-          payload[key] = data[key];
-        }
-      });
-
-      // Using a timeout and catch to avoid hanging the application
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
+      const timeoutId = setTimeout(() => controller.abort(), 500);
 
       try {
-        // Send to Fluent Bit's configured HTTP endpoint
         await this.axiosInstance.post(this.fluentEndpoint, payload, {
           signal: controller.signal,
         });
 
-        // Debug logging for development
         if (process.env.NODE_ENV !== 'production') {
           console.debug(`Sent log to Fluent Bit: ${tag}`);
         }
-      } catch (innerError: any) {
-        // Only show connection errors once every 10 seconds to avoid log spam
+      } catch (innerError) {
         const now = Date.now();
         if (!this.lastErrorTime || now - this.lastErrorTime > 10000) {
           console.error(
@@ -237,8 +193,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       } finally {
         clearTimeout(timeoutId);
       }
-    } catch (error: any) {
-      // Only log outer errors once every 10 seconds
+    } catch (error) {
       const now = Date.now();
       if (!this.lastErrorTime || now - this.lastErrorTime > 10000) {
         console.error('Error in sendToFluentBit:', error.message);
@@ -247,97 +202,69 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     }
   }
 
-  // Modified log methods to include Fluent Bit forwarding
+  // Logging methods with better data handling
   log(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
-    const metaData =
-      meta.length > 0 && meta[0] && typeof meta[0] === 'object' ? meta[0] : {};
-
-    const logData: Record<string, any> = {
+    const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
     };
 
-    if (meta.length > 0 && meta[0]) {
-      logData.metadata = meta[0];
-    }
-
-    const winstonData: Record<string, any> = { context: logContext };
-    Object.assign(winstonData, metaData);
-
-    this.logger.info(message, winstonData);
+    this.logger.info(logData.message, {
+      context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+    });
     this.sendToFluentBit('info', logData);
   }
 
   error(message: any, trace?: string, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
-    const metaData =
-      meta.length > 0 && meta[0] && typeof meta[0] === 'object' ? meta[0] : {};
-
-    const logData: Record<string, any> = {
+    const logData = {
       message: this.formatLogMessage(message),
+      trace,
       context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
     };
 
-    if (trace) {
-      logData.trace = trace;
-    }
-
-    if (meta.length > 0 && meta[0]) {
-      logData.metadata = meta[0];
-    }
-
-    const winstonData: Record<string, any> = { trace, context: logContext };
-    Object.assign(winstonData, metaData);
-
-    this.logger.error(message, winstonData);
+    this.logger.error(logData.message, {
+      trace,
+      context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+    });
     this.sendToFluentBit('error', logData);
   }
 
   warn(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
-    const metaData =
-      meta.length > 0 && meta[0] && typeof meta[0] === 'object' ? meta[0] : {};
-
-    const logData: Record<string, any> = {
+    const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
     };
 
-    if (meta.length > 0 && meta[0]) {
-      logData.metadata = meta[0];
-    }
-
-    const winstonData: Record<string, any> = { context: logContext };
-    Object.assign(winstonData, metaData);
-
-    this.logger.warn(message, winstonData);
+    this.logger.warn(logData.message, {
+      context: logContext,
+      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+    });
     this.sendToFluentBit('warn', logData);
   }
 
   debug(message: any, context?: string, ...meta: any[]) {
     try {
       const logContext = context || this.context;
-      const metaData =
-        meta.length > 0 && meta[0] && typeof meta[0] === 'object'
-          ? meta[0]
-          : {};
-
-      const logData: Record<string, any> = {
+      const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
+        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
       };
 
-      if (meta.length > 0 && meta[0]) {
-        logData.metadata = meta[0];
-      }
-
-      const winstonData: Record<string, any> = { context: logContext };
-      Object.assign(winstonData, metaData);
-
-      this.logger.debug(message, winstonData);
+      this.logger.debug(logData.message, {
+        context: logContext,
+        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      });
       this.sendToFluentBit('debug', logData);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in FluentLogger.debug:', error);
       console.debug(`[${context || this.context}] DEBUG: ${message}`);
     }
@@ -346,26 +273,18 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   verbose(message: any, context?: string, ...meta: any[]) {
     try {
       const logContext = context || this.context;
-      const metaData =
-        meta.length > 0 && meta[0] && typeof meta[0] === 'object'
-          ? meta[0]
-          : {};
-
-      const logData: Record<string, any> = {
+      const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
+        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
       };
 
-      if (meta.length > 0 && meta[0]) {
-        logData.metadata = meta[0];
-      }
-
-      const winstonData: Record<string, any> = { context: logContext };
-      Object.assign(winstonData, metaData);
-
-      this.logger.verbose(message, winstonData);
+      this.logger.verbose(logData.message, {
+        context: logContext,
+        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      });
       this.sendToFluentBit('verbose', logData);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in FluentLogger.verbose:', error);
       console.log(`[${context || this.context}] VERBOSE: ${message}`);
     }
@@ -373,7 +292,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
   private formatLogMessage(message: any): string {
     if (typeof message === 'object') {
-      return JSON.stringify(message, null, 2);
+      return JSON.stringify(message, null, 0);
     }
     return String(message);
   }
