@@ -31,19 +31,19 @@ export class ProxyService {
       return this.proxyRequest(request, this.webBackendUrl, '/api/v1/web');
     }
 
-    if (url.startsWith('/api/v1/mobile')) {
-      return this.proxyRequest(
-        request,
-        this.mobileBackendUrl,
-        '/api/v1/mobile',
-      );
-    }
-
     if (url.startsWith('/api/v1/mobile/maintenancier')) {
       return this.proxyRequest(
         request,
         this.mobileMaintenancierBackendUrl,
         '/api/v1/mobile/maintenancier',
+      );
+    }
+
+    if (url.startsWith('/api/v1/mobile')) {
+      return this.proxyRequest(
+        request,
+        this.mobileBackendUrl,
+        '/api/v1/mobile',
       );
     }
 
