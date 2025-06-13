@@ -57,7 +57,7 @@ export class LogsController {
             : 'directory does not exist'
         }`;
       }
-      
+
       return readFileSync(logPath, 'utf-8');
     } catch (error) {
       console.error('Error reading logs:', error);
@@ -112,6 +112,7 @@ export class LogsController {
     @Res() res: Response,
     @Query('all') all: string,
     @Query('type') type: string,
+    @Query('format') format: string = 'file', // 'file' or 'text'
   ) {
     try {
       if (!fs.existsSync(this.logDir)) {
@@ -128,54 +129,90 @@ export class LogsController {
         return res.status(404).send(`No log files found in ${this.logDir}`);
       }
 
+      // Handle ZIP download case
       if (all === 'true') {
-        // Create a zip of all log files
-        const archiver = require('archiver');
-        const archive = archiver('zip', { zlib: { level: 9 } });
-
-        res.attachment(`all-logs-${new Date().toISOString()}.zip`);
-        archive.pipe(res);
-
-        logFiles.forEach((file) => {
-          archive.file(path.join(this.logDir, file), { name: file });
-        });
-
-        await archive.finalize();
-      } else if (type) {
-        // Download specific log type (e.g., error, info)
-        const matchingFiles = logFiles.filter((file) => file.includes(type));
-        if (matchingFiles.length === 0) {
-          return res.status(404).send(`No ${type} logs found`);
-        }
-
-        const fileToDownload = matchingFiles[0];
-        const filePath = path.join(this.logDir, fileToDownload);
-
-        if (fileToDownload.endsWith('.gz')) {
-          res.set('Content-Type', 'application/gzip');
-          res.attachment(fileToDownload);
-          createReadStream(filePath).pipe(res);
-        } else {
-          res.download(filePath, fileToDownload);
-        }
-      } else {
-        // Default: download the latest application log
-        const latestLog =
-          logFiles.find((file) => file.includes('fluent')) || logFiles[0];
-        const filePath = path.join(this.logDir, latestLog);
-
-        if (latestLog.endsWith('.gz')) {
-          res.set('Content-Type', 'application/gzip');
-          res.attachment(latestLog);
-          createReadStream(filePath).pipe(res);
-        } else {
-          res.download(filePath, latestLog);
-        }
+        return this.handleZipDownload(res, logFiles);
       }
+
+      // Handle text content case
+      if (format === 'text') {
+        return this.handleTextDownload(res, type, logFiles);
+      }
+
+      // Handle single file download case
+      return this.handleFileDownload(res, type, logFiles);
     } catch (error) {
       console.error('Log download error:', error);
       return res.status(500).send(`Failed to download logs: ${error.message}`);
     }
+  }
+
+  private async handleZipDownload(res: Response, logFiles: string[]) {
+    const archiver = require('archiver');
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    res.attachment(`all-logs-${new Date().toISOString()}.zip`);
+    archive.pipe(res);
+
+    logFiles.forEach((file) => {
+      archive.file(path.join(this.logDir, file), { name: file });
+    });
+
+    await archive.finalize();
+  }
+
+  private handleTextDownload(res: Response, type: string, logFiles: string[]) {
+    if (!type) {
+      return res.status(400).send('Type parameter required for text download');
+    }
+
+    const matchingFiles = logFiles.filter((file) => file.includes(type));
+    if (matchingFiles.length === 0) {
+      return res.status(404).send(`No ${type} logs found`);
+    }
+
+    const fileToDownload = matchingFiles[0];
+    const filePath = path.join(this.logDir, fileToDownload);
+
+    if (fileToDownload.endsWith('.gz')) {
+      // Handle gzipped files by decompressing first
+      const gunzip = zlib.createGunzip();
+      const fileStream = createReadStream(filePath);
+      res.set('Content-Type', 'text/plain');
+      fileStream.pipe(gunzip).pipe(res);
+    } else {
+      // Send plain text files directly
+      res.set('Content-Type', 'text/plain');
+      createReadStream(filePath).pipe(res);
+    }
+  }
+
+  private handleFileDownload(res: Response, type: string, logFiles: string[]) {
+    let fileToDownload: string;
+
+    if (type) {
+      const matchingFiles = logFiles.filter((file) => file.includes(type));
+      if (matchingFiles.length === 0) {
+        return res.status(404).send(`No ${type} logs found`);
+      }
+      fileToDownload = matchingFiles[0];
+    } else {
+      // Default to latest application log
+      fileToDownload =
+        logFiles.find((file) => file.includes('fluent')) || logFiles[0];
+    }
+
+    const filePath = path.join(this.logDir, fileToDownload);
+
+    if (fileToDownload.endsWith('.gz')) {
+      res.set('Content-Type', 'application/gzip');
+      res.attachment(fileToDownload);
+    } else {
+      res.set('Content-Type', 'text/plain');
+      res.attachment(fileToDownload.replace('.log', '.txt'));
+    }
+
+    createReadStream(filePath).pipe(res);
   }
 
   @Get('list')
