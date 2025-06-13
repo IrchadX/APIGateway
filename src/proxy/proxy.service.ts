@@ -19,6 +19,8 @@ export class ProxyService {
     private readonly httpService: HttpService,
     @Inject('WEB_BACKEND_URL') private readonly webBackendUrl: string,
     @Inject('MOBILE_BACKEND_URL') private readonly mobileBackendUrl: string,
+    @Inject('MOBILE_MAINTENANCIER_BACKEND_URL')
+    private readonly mobileMaintenancierBackendUrl: string,
     private readonly fluentLogger: FluentLogger,
   ) {}
 
@@ -34,6 +36,14 @@ export class ProxyService {
         request,
         this.mobileBackendUrl,
         '/api/v1/mobile',
+      );
+    }
+
+    if (url.startsWith('/mobile/maintenancier/')) {
+      return this.proxyRequest(
+        request,
+        this.mobileMaintenancierBackendUrl,
+        '/mobile/maintenancier',
       );
     }
 
