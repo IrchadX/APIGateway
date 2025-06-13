@@ -136,7 +136,7 @@ export class LogsController {
 
       // Handle ALL logs as TEXT
       if (all === 'true' && format === 'text') {
-        return this.handleAllTextDownload(res, logFiles);
+        return this.handleAllTextDownload(res);
       }
 
       // Handle single log as TEXT
@@ -164,7 +164,6 @@ export class LogsController {
     const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);
   }
-
   private async handleZipDownload(res: Response, logFiles: string[]) {
     const archiver = require('archiver');
     const archive = archiver('zip', { zlib: { level: 9 } });
