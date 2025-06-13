@@ -31,6 +31,12 @@ import { LogsController } from './logging/logging.controller';
         configService.get('MOBILE_BACKEND_URL'),
       inject: [ConfigService],
     },
+    {
+      provide: 'MOBILE_MAINTENANCIER_BACKEND_URL',
+      useFactory: (configService: ConfigService) =>
+        configService.get('MOBILE_MAINTENANCIER_BACKEND_URL'),
+      inject: [ConfigService],
+    },
     ProxyService,
   ],
 })
