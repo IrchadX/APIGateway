@@ -152,31 +152,17 @@ export class LogsController {
     }
   }
 
-  /**
-   * New method: Concatenates all logs into a single text response.
-   */
-  private async handleAllTextDownload(res: Response, logFiles: string[]) {
-    res.set('Content-Type', 'text/plain');
+  private async handleAllTextDownload(res: Response) {
+    const logFile = 'application.log';
+    const filePath = path.join(this.logDir, logFile);
 
-    // Process each file sequentially
-    for (const file of logFiles) {
-      const filePath = path.join(this.logDir, file);
-      const fileStream = fs.createReadStream(filePath);
-      const isGzipped = file.endsWith('.gz');
-
-      // Decompress if needed
-      const contentStream = isGzipped
-        ? fileStream.pipe(zlib.createGunzip())
-        : fileStream;
-
-      // Pipe content to response
-      await new Promise((resolve, reject) => {
-        contentStream.pipe(res, { end: false });
-        contentStream.on('error', reject);
-      });
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('Consolidated log file not found');
     }
 
-    res.end(); // Close the response
+    res.set('Content-Type', 'text/plain');
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
   }
 
   private async handleZipDownload(res: Response, logFiles: string[]) {
