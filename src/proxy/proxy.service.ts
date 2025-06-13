@@ -39,11 +39,11 @@ export class ProxyService {
       );
     }
 
-    if (url.startsWith('/mobile/maintenancier/')) {
+    if (url.startsWith('/api/v1/mobile/maintenancier')) {
       return this.proxyRequest(
         request,
         this.mobileMaintenancierBackendUrl,
-        '/mobile/maintenancier',
+        '/api/v1/mobile/maintenancier',
       );
     }
 
