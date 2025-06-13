@@ -130,21 +130,53 @@ export class LogsController {
       }
 
       // Handle ZIP download case
-      if (all === 'true') {
+      if (all === 'true' && format === 'file') {
         return this.handleZipDownload(res, logFiles);
       }
 
-      // Handle text content case
+      // Handle ALL logs as TEXT
+      if (all === 'true' && format === 'text') {
+        return this.handleAllTextDownload(res, logFiles);
+      }
+
+      // Handle single log as TEXT
       if (format === 'text') {
         return this.handleTextDownload(res, type, logFiles);
       }
 
-      // Handle single file download case
+      // Handle single file download
       return this.handleFileDownload(res, type, logFiles);
     } catch (error) {
       console.error('Log download error:', error);
       return res.status(500).send(`Failed to download logs: ${error.message}`);
     }
+  }
+
+  /**
+   * New method: Concatenates all logs into a single text response.
+   */
+  private async handleAllTextDownload(res: Response, logFiles: string[]) {
+    res.set('Content-Type', 'text/plain');
+
+    // Process each file sequentially
+    for (const file of logFiles) {
+      const filePath = path.join(this.logDir, file);
+      const fileStream = fs.createReadStream(filePath);
+      const isGzipped = file.endsWith('.gz');
+
+      // Decompress if needed
+      const contentStream = isGzipped
+        ? fileStream.pipe(zlib.createGunzip())
+        : fileStream;
+
+      // Pipe content to response
+      await new Promise((resolve, reject) => {
+        contentStream.pipe(res, { end: false });
+        contentStream.on('error', reject);
+      });
+    }
+
+    res.end(); // Close the response
   }
 
   private async handleZipDownload(res: Response, logFiles: string[]) {
