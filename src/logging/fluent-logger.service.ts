@@ -44,6 +44,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
         this.createFileTransport('info'),
         this.createFileTransport('error'),
         this.createFileTransport('warn'),
+        this.createFileTransport('debug'),
       ],
       format: winston.format.combine(
         winston.format.timestamp(),
@@ -145,10 +146,25 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       maxSize: '20m',
       maxFiles: '14d',
       format: winston.format.combine(
-        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        winston.format.json({
-          space: 2, // Pretty-print JSON with 2-space indentation
-        }),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        winston.format.printf(
+          ({ timestamp, level, message, context, trace, ...meta }) => {
+            // Create a structured but readable format
+            const logEntry = {
+              timestamp,
+              level: level.toUpperCase(),
+              context: context || this.context,
+              app: this.appName,
+              message:
+                typeof message === 'object' ? JSON.stringify(message) : message,
+              ...(trace && { trace }),
+              ...(Object.keys(meta).length > 0 && { metadata: meta }),
+            };
+
+            // Pretty print with proper indentation for readability
+            return JSON.stringify(logEntry, null, 2);
+          },
+        ),
       ),
     });
   }
@@ -161,12 +177,24 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const tag = `app.${level.toLowerCase()}`;
 
       const payload = {
-        ...data,
-        // IMPORTANT: Include tag in the payload - Fluent Bit will use tag_key to extract it
-        tag: tag,
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(),
         app_name: this.appName,
+        context: data.context || this.context,
+        message: data.message,
+        // Include trace if present
+        ...(data.trace && { trace: data.trace }),
+        // Include any additional metadata
+        ...(data.metadata && { metadata: data.metadata }),
+        // Flatten any other properties
+        ...Object.keys(data).reduce((acc, key) => {
+          if (!['message', 'context', 'trace', 'metadata'].includes(key)) {
+            acc[key] = data[key];
+          }
+          return acc;
+        }, {}),
+        // IMPORTANT: Include tag in the payload - Fluent Bit will use tag_key to extract it
+        tag: tag,
       };
 
       // Using a timeout and catch to avoid hanging the application
@@ -214,7 +242,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
-      ...(meta[0] || {}),
+      ...(meta.length > 0 && { metadata: meta[0] }),
     };
 
     this.logger.info(message, { context: logContext, ...meta[0] });
@@ -227,7 +255,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       message: this.formatLogMessage(message),
       trace,
       context: logContext,
-      ...(meta[0] || {}),
+      ...(meta.length > 0 && { metadata: meta[0] }),
     };
 
     this.logger.error(message, { trace, context: logContext, ...meta[0] });
@@ -239,7 +267,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
-      ...(meta[0] || {}),
+      ...(meta.length > 0 && { metadata: meta[0] }),
     };
 
     this.logger.warn(message, { context: logContext, ...meta[0] });
@@ -252,7 +280,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
-        ...(meta[0] || {}),
+        ...(meta.length > 0 && { metadata: meta[0] }),
       };
 
       this.logger.debug(message, { context: logContext, ...meta[0] });
@@ -269,7 +297,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
-        ...(meta[0] || {}),
+        ...(meta.length > 0 && { metadata: meta[0] }),
       };
 
       this.logger.verbose(message, { context: logContext, ...meta[0] });
@@ -282,7 +310,7 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
   private formatLogMessage(message: any): string {
     if (typeof message === 'object') {
-      return JSON.stringify(message);
+      return JSON.stringify(message, null, 2);
     }
     return String(message);
   }
