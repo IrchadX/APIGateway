@@ -37,10 +37,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     // Configure Fluent Bit logging
     this.configureFluentBit();
 
-    // Create Winston logger (console transport only)
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
-      transports: [this.createConsoleTransport()],
+      transports: [
+        this.createConsoleTransport(),
+        this.createFileTransport('info'),
+        this.createFileTransport('error'),
+        this.createFileTransport('warn'),
+      ],
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.json(),
@@ -128,6 +132,23 @@ export class FluentLogger implements LoggerService, OnModuleInit {
             }`;
           },
         ),
+      ),
+    });
+  }
+
+  private createFileTransport(level: string) {
+    return new winston.transports.DailyRotateFile({
+      level: level,
+      filename: path.join(this.logDir, `${level}-%DATE%.log`),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d',
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.json({
+          space: 2, // Pretty-print JSON with 2-space indentation
+        }),
       ),
     });
   }
