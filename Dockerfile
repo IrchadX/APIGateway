@@ -15,13 +15,19 @@ WORKDIR /usr/src/app
 
 # Install required dependencies
 RUN apt-get update && \
-    apt-get install -y curl gnupg lsb-release procps openssl && \
+    apt-get install -y curl gnupg lsb-release procps openssl python3 python3-pip && \
     curl https://packages.fluentbit.io/fluentbit.key | gpg --dearmor -o /usr/share/keyrings/fluentbit-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/fluentbit-archive-keyring.gpg] https://packages.fluentbit.io/debian/$(lsb_release -cs) $(lsb_release -cs) main" > /etc/apt/sources.list.d/fluentbit.list && \
     apt-get update && \
     apt-get install -y fluent-bit && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Python packages required for the prediction script
+RUN pip3 install pandas scikit-learn python-dateutil numpy
+
+# Create symlink so 'py' command works (since your Node.js code uses 'py')
+RUN ln -s /usr/bin/python3 /usr/bin/py
 
 # Create standardized log directory and set permissions
 RUN mkdir -p ${LOG_DIR} && chmod 777 ${LOG_DIR}
