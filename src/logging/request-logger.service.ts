@@ -23,6 +23,9 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const userAgent = headers['user-agent'] || 'unknown';
     const startTime = Date.now();
 
+    // Capture the call stack at request time
+    const requestStack = this.captureStack();
+
     // Remove sensitive information from request
     const sanitizedHeaders = { ...headers };
     ['authorization', 'cookie', 'x-api-key'].forEach(
@@ -38,9 +41,11 @@ export class RequestLoggingInterceptor implements NestInterceptor {
       query,
       params,
       headers: sanitizedHeaders,
+      callStack: requestStack, // Add the call stack
+      timestamp: new Date().toISOString(),
     };
 
-    // Log request
+    // Log request with stack trace
     this.logRequest(requestData);
 
     return next.handle().pipe(
@@ -50,13 +55,9 @@ export class RequestLoggingInterceptor implements NestInterceptor {
           const response = context.switchToHttp().getResponse();
           const { statusCode } = response;
 
-          // Sanitize response if needed
           let sanitizedResponse = data;
           if (data && typeof data === 'object') {
             sanitizedResponse = { ...data };
-            // Remove sensitive fields if needed
-            // delete sanitizedResponse.password;
-            // delete sanitizedResponse.token;
           }
 
           this.logResponse({
@@ -65,6 +66,7 @@ export class RequestLoggingInterceptor implements NestInterceptor {
             requestUrl: originalUrl,
             method,
             response: sanitizedResponse,
+            callStack: requestStack, // Include stack in response log too
           });
         },
         error: (error) => {
@@ -80,15 +82,48 @@ export class RequestLoggingInterceptor implements NestInterceptor {
               message: error.message,
               stack: error.stack,
             },
+            callStack: requestStack, // Include original request stack
           });
         },
       }),
     );
   }
 
+  private captureStack(): string {
+    // Create a new Error to capture the current stack trace
+    const stackTrace = new Error().stack;
+
+    if (!stackTrace) {
+      return 'Stack trace not available';
+    }
+
+    // Clean up the stack trace by removing the first few lines that are from this interceptor
+    const stackLines = stackTrace.split('\n');
+
+    // Remove the first line (Error message) and the lines from this interceptor
+    const cleanedStack = stackLines
+      .slice(1) // Remove "Error" line
+      .filter((line) => {
+        // Filter out lines from this interceptor and internal Node.js/NestJS framework code
+        return (
+          !line.includes('RequestLoggingInterceptor') &&
+          !line.includes('intercept') &&
+          !line.includes('captureStack') &&
+          !line.includes('node_modules/@nestjs') &&
+          !line.includes('node_modules/rxjs')
+        );
+      })
+      .join('\n');
+
+    return cleanedStack || 'No application stack trace available';
+  }
+
   private logRequest(requestData: any) {
     const logMessage = `Incoming request: ${requestData.method} ${requestData.url}`;
-    this.fluentLogger.log(logMessage, 'HTTP Request', requestData);
+    this.fluentLogger.log(logMessage, 'HTTP Request', {
+      ...requestData,
+      stackTrace: requestData.callStack, // Explicitly include stack trace
+    });
   }
 
   private logResponse(responseData: any) {
@@ -96,15 +131,21 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const level = statusCode >= 400 ? 'error' : 'info';
     const logMessage = `Response: ${responseData.statusCode} ${responseData.method} ${responseData.requestUrl} - ${responseData.responseTime}ms`;
 
-    // Use error level for 4xx and 5xx responses
     if (level === 'error') {
       this.fluentLogger.error(
         logMessage,
         responseData.error?.stack,
         'HTTP Response',
+        {
+          ...responseData,
+          originalRequestStack: responseData.callStack,
+        },
       );
     } else {
-      this.fluentLogger.log(logMessage, 'HTTP Response', responseData);
+      this.fluentLogger.log(logMessage, 'HTTP Response', {
+        ...responseData,
+        originalRequestStack: responseData.callStack,
+      });
     }
   }
 }

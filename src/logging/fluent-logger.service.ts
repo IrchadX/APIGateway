@@ -31,14 +31,9 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     this.appName = this.configService.get('APP_NAME') || 'nest';
     this.configureFluentBit();
 
-    // Create Winston logger with improved formatting
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
-      transports: [
-        this.createConsoleTransport(),
-        // Add file transport for better log management
-        this.createFileTransport(),
-      ],
+      transports: [this.createConsoleTransport(), this.createFileTransport()],
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
         winston.format.errors({ stack: true }),
@@ -48,7 +43,6 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   }
 
   async onModuleInit() {
-    // ... existing onModuleInit code remains the same
     try {
       if (!fs.existsSync(this.logDir)) {
         console.log(`Creating log directory: ${this.logDir}`);
@@ -202,7 +196,6 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     }
   }
 
-  // Logging methods with better data handling
   log(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
     const logData = {

@@ -53,28 +53,7 @@ export class DbLoggingInterceptor implements NestInterceptor {
     );
   }
 
-  private setupPrismaQueryLogging() {
-    // This is a placeholder - in a real implementation, you'd use Prisma's middleware
-    // or events API to log actual DB queries. Since the Prisma Client doesn't expose
-    // a direct query logging interface, you might need to use a middleware pattern
-    // Pseudo-code example for prisma middleware:
-    /*
-      this.prismaService.$use(async (params, next) => {
-        const startTime = Date.now();
-        const result = await next(params);
-        const executionTime = Date.now() - startTime;
-        
-        this.logPrismaOperation({
-          model: params.model,
-          action: params.action,
-          args: params.args,
-          executionTime,
-        });
-        
-        return result;
-      });
-      */
-  }
+  private setupPrismaQueryLogging() {}
 
   private logDbOperation(data: any) {
     const message = `Database operation for ${data.routeInfo} completed in ${data.executionTime}ms`;

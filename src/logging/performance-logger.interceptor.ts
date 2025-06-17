@@ -12,7 +12,6 @@ import { FluentLogger } from './fluent-logger.service';
 @Injectable()
 export class PerformanceInterceptor implements NestInterceptor {
   constructor(private readonly fluentLogger: FluentLogger) {
-    // Log when the interceptor is created to verify it's working
     console.log('[PerformanceInterceptor] Initialized');
     this.fluentLogger.log('PerformanceInterceptor initialized', 'Interceptor');
   }
@@ -38,7 +37,6 @@ export class PerformanceInterceptor implements NestInterceptor {
     const controllerClass = context.getClass().name;
     const handlerMethod = context.getHandler().name;
 
-    // Record memory usage before execution
     const memBefore = process.memoryUsage();
 
     return next.handle().pipe(
@@ -127,12 +125,10 @@ export class PerformanceInterceptor implements NestInterceptor {
       message = `Performance error: ${data.routeInfo} failed after ${executionTime}ms`;
     }
 
-    // Always log to console in non-production environments
     if (process.env.NODE_ENV !== 'production' || level !== 'info') {
       console.log(`[Performance] ${message}`);
     }
 
-    // Log to Fluent and file
     try {
       if (level === 'warn') {
         this.fluentLogger.warn(message, 'Performance', perfData);
