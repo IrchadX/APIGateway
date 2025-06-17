@@ -22,6 +22,7 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const { method, originalUrl, ip, body, query, params, headers } = request;
     const userAgent = headers['user-agent'] || 'unknown';
     const startTime = Date.now();
+    const requestId = this.generateRequestId();
 
     // Capture the call stack at request time
     const requestStack = this.captureStack();
@@ -33,20 +34,25 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     );
 
     const requestData = {
+      requestId,
       method,
       url: originalUrl,
       ip,
       userAgent,
-      body,
+      body: this.sanitizeBody(body),
       query,
       params,
       headers: sanitizedHeaders,
-      callStack: requestStack, // Add the call stack
+      callStack: requestStack,
       timestamp: new Date().toISOString(),
     };
 
-    // Log request with stack trace
-    this.logRequest(requestData);
+    // Use the new logRequest method
+    this.fluentLogger.logRequest(
+      `Incoming request: ${method} ${originalUrl}`,
+      'HTTP Request',
+      requestData,
+    );
 
     return next.handle().pipe(
       tap({
@@ -55,24 +61,24 @@ export class RequestLoggingInterceptor implements NestInterceptor {
           const response = context.switchToHttp().getResponse();
           const { statusCode } = response;
 
-          let sanitizedResponse = data;
-          if (data && typeof data === 'object') {
-            sanitizedResponse = { ...data };
-          }
-
-          this.logResponse({
+          const responseData = {
+            requestId,
             statusCode,
             responseTime,
             requestUrl: originalUrl,
             method,
-            response: sanitizedResponse,
-            callStack: requestStack, // Include stack in response log too
-          });
+            response: this.sanitizeResponse(data),
+            originalRequestStack: requestStack,
+            timestamp: new Date().toISOString(),
+          };
+
+          this.logResponse(responseData);
         },
         error: (error) => {
           const responseTime = Date.now() - startTime;
 
-          this.logResponse({
+          const errorData = {
+            requestId,
             statusCode: error.status || 500,
             responseTime,
             requestUrl: originalUrl,
@@ -82,48 +88,97 @@ export class RequestLoggingInterceptor implements NestInterceptor {
               message: error.message,
               stack: error.stack,
             },
-            callStack: requestStack, // Include original request stack
-          });
+            originalRequestStack: requestStack,
+            timestamp: new Date().toISOString(),
+          };
+
+          this.logResponse(errorData);
         },
       }),
     );
   }
 
   private captureStack(): string {
-    // Create a new Error to capture the current stack trace
-    const stackTrace = new Error().stack;
+    try {
+      // Create a new Error to capture the current stack trace
+      const stackTrace = new Error().stack;
 
-    if (!stackTrace) {
-      return 'Stack trace not available';
+      if (!stackTrace) {
+        return 'Stack trace not available';
+      }
+
+      // Clean up the stack trace by removing interceptor lines
+      const stackLines = stackTrace.split('\n');
+
+      const cleanedStack = stackLines
+        .slice(1) // Remove "Error" line
+        .filter((line) => {
+          // Filter out lines from this interceptor and framework code
+          return (
+            !line.includes('RequestLoggingInterceptor') &&
+            !line.includes('intercept') &&
+            !line.includes('captureStack') &&
+            !line.includes('node_modules/@nestjs/core') &&
+            !line.includes('node_modules/rxjs')
+          );
+        })
+        .slice(0, 15) // Limit to first 15 frames
+        .join('\n');
+
+      return cleanedStack || 'No application stack trace available';
+    } catch (error) {
+      return `Stack capture failed: ${error.message}`;
     }
-
-    // Clean up the stack trace by removing the first few lines that are from this interceptor
-    const stackLines = stackTrace.split('\n');
-
-    // Remove the first line (Error message) and the lines from this interceptor
-    const cleanedStack = stackLines
-      .slice(1) // Remove "Error" line
-      .filter((line) => {
-        // Filter out lines from this interceptor and internal Node.js/NestJS framework code
-        return (
-          !line.includes('RequestLoggingInterceptor') &&
-          !line.includes('intercept') &&
-          !line.includes('captureStack') &&
-          !line.includes('node_modules/@nestjs') &&
-          !line.includes('node_modules/rxjs')
-        );
-      })
-      .join('\n');
-
-    return cleanedStack || 'No application stack trace available';
   }
 
-  private logRequest(requestData: any) {
-    const logMessage = `Incoming request: ${requestData.method} ${requestData.url}`;
-    this.fluentLogger.log(logMessage, 'HTTP Request', {
-      ...requestData,
-      stackTrace: requestData.callStack, // Explicitly include stack trace
-    });
+  private sanitizeBody(body: any): any {
+    if (!body) return body;
+
+    try {
+      const sanitized = { ...body };
+
+      // Remove sensitive fields
+      ['password', 'token', 'secret', 'key', 'auth'].forEach((field) => {
+        if (sanitized[field]) {
+          sanitized[field] = '[REDACTED]';
+        }
+      });
+
+      // Truncate large bodies
+      const bodyStr = JSON.stringify(sanitized);
+      if (bodyStr.length > 10000) {
+        return {
+          ...sanitized,
+          _truncated: true,
+          _originalSize: bodyStr.length,
+        };
+      }
+
+      return sanitized;
+    } catch (error) {
+      return { error: 'Failed to sanitize body', type: typeof body };
+    }
+  }
+
+  private sanitizeResponse(data: any): any {
+    if (!data) return data;
+
+    try {
+      // Limit response data size
+      const dataStr = JSON.stringify(data);
+      if (dataStr.length > 5000) {
+        return {
+          _truncated: true,
+          _originalSize: dataStr.length,
+          _type: typeof data,
+          _preview: dataStr.substring(0, 500) + '...',
+        };
+      }
+
+      return data;
+    } catch (error) {
+      return { error: 'Failed to sanitize response', type: typeof data };
+    }
   }
 
   private logResponse(responseData: any) {
@@ -136,16 +191,14 @@ export class RequestLoggingInterceptor implements NestInterceptor {
         logMessage,
         responseData.error?.stack,
         'HTTP Response',
-        {
-          ...responseData,
-          originalRequestStack: responseData.callStack,
-        },
+        responseData,
       );
     } else {
-      this.fluentLogger.log(logMessage, 'HTTP Response', {
-        ...responseData,
-        originalRequestStack: responseData.callStack,
-      });
+      this.fluentLogger.log(logMessage, 'HTTP Response', responseData);
     }
+  }
+
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 }

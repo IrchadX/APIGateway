@@ -33,7 +33,11 @@ export class FluentLogger implements LoggerService, OnModuleInit {
 
     this.logger = winston.createLogger({
       level: this.configService.get('LOG_LEVEL') || 'info',
-      transports: [this.createConsoleTransport(), this.createFileTransport()],
+      transports: [
+        this.createConsoleTransport(),
+        this.createFileTransport(),
+        this.createStackTraceTransport(), // Separate transport for detailed logs
+      ],
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
         winston.format.errors({ stack: true }),
@@ -127,9 +131,18 @@ export class FluentLogger implements LoggerService, OnModuleInit {
         winston.format.printf(
           ({ timestamp, level, message, context, trace, ...meta }) => {
             const ctx = context || this.context;
-            const metaStr = Object.keys(meta).length
-              ? ` ${JSON.stringify(meta)}`
-              : '';
+
+            // Better handling of complex metadata
+            let metaStr = '';
+            if (Object.keys(meta).length > 0) {
+              try {
+                // Use JSON.stringify with proper handling of circular references and depth
+                metaStr = ` | meta: ${JSON.stringify(meta, this.getCircularReplacer(), 2)}`;
+              } catch (error) {
+                metaStr = ` | meta: [Complex object - JSON stringify failed: ${error.message}]`;
+              }
+            }
+
             const traceStr = trace ? ` | trace: ${trace}` : '';
 
             return `${timestamp} [${ctx}] ${level.toUpperCase()}: ${message}${metaStr}${traceStr}`;
@@ -139,13 +152,64 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     });
   }
 
+  // New transport specifically for detailed stack traces and complex data
+  private createStackTraceTransport() {
+    return new winston.transports.File({
+      filename: path.join(this.logDir, 'detailed.log'),
+      maxsize: 50 * 1024 * 1024, // 50MB for detailed logs
+      maxFiles: 3,
+      level: 'debug', // Capture all levels
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        winston.format.json(), // Use JSON format for structured data
+        winston.format.printf((info) => {
+          // Custom formatter that handles complex objects better
+          try {
+            return JSON.stringify(
+              {
+                timestamp: info.timestamp,
+
+                context: info.context,
+                ...info,
+              },
+              this.getCircularReplacer(),
+              2,
+            );
+          } catch (error) {
+            return JSON.stringify({
+              timestamp: info.timestamp,
+              level: info.level,
+              message: info.message,
+              context: info.context,
+              error: `Failed to serialize log data: ${error.message}`,
+            });
+          }
+        }),
+      ),
+    });
+  }
+
+  // Helper to handle circular references in JSON.stringify
+  private getCircularReplacer() {
+    const seen = new WeakSet();
+    return (key: string, value: any) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular Reference]';
+        }
+        seen.add(value);
+      }
+      return value;
+    };
+  }
+
   private async sendToFluentBit(level: string, data: any) {
     if (!this.fluentEnabled) return;
 
     try {
       const tag = `app.${level.toLowerCase()}`;
 
-      // Create a more structured payload
+      // Create a more structured payload with better serialization
       const payload = {
         timestamp: new Date().toISOString(),
         level: level.toLowerCase(),
@@ -153,12 +217,8 @@ export class FluentLogger implements LoggerService, OnModuleInit {
         context: data.context || this.context,
         message: data.message,
         ...(data.trace && { trace: data.trace }),
-        // Include any additional metadata
-        ...Object.fromEntries(
-          Object.entries(data).filter(
-            ([key]) => !['message', 'context', 'trace'].includes(key),
-          ),
-        ),
+        // Serialize complex objects properly for Fluent Bit
+        metadata: this.serializeMetadata(data),
         tag: tag,
       };
 
@@ -196,18 +256,38 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     }
   }
 
+  private serializeMetadata(data: any): any {
+    try {
+      const filtered = Object.fromEntries(
+        Object.entries(data).filter(
+          ([key]) => !['message', 'context', 'trace'].includes(key),
+        ),
+      );
+
+      // Convert to JSON and back to ensure serialization works
+      return JSON.parse(JSON.stringify(filtered, this.getCircularReplacer()));
+    } catch (error) {
+      return {
+        serializationError: error.message,
+        originalKeys: Object.keys(data),
+      };
+    }
+  }
+
   log(message: any, context?: string, ...meta: any[]) {
     const logContext = context || this.context;
     const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
     };
 
+    // Log with all metadata properly structured
     this.logger.info(logData.message, {
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...logData,
     });
+
     this.sendToFluentBit('info', logData);
   }
 
@@ -217,14 +297,15 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       message: this.formatLogMessage(message),
       trace,
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
     };
 
     this.logger.error(logData.message, {
       trace,
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...logData,
     });
+
     this.sendToFluentBit('error', logData);
   }
 
@@ -233,13 +314,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     const logData = {
       message: this.formatLogMessage(message),
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
     };
 
     this.logger.warn(logData.message, {
       context: logContext,
-      ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+      ...logData,
     });
+
     this.sendToFluentBit('warn', logData);
   }
 
@@ -249,13 +331,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
-        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+        ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
       };
 
       this.logger.debug(logData.message, {
         context: logContext,
-        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+        ...logData,
       });
+
       this.sendToFluentBit('debug', logData);
     } catch (error) {
       console.error('Error in FluentLogger.debug:', error);
@@ -269,13 +352,14 @@ export class FluentLogger implements LoggerService, OnModuleInit {
       const logData = {
         message: this.formatLogMessage(message),
         context: logContext,
-        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+        ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
       };
 
       this.logger.verbose(logData.message, {
         context: logContext,
-        ...(meta.length > 0 && meta[0] ? meta[0] : {}),
+        ...logData,
       });
+
       this.sendToFluentBit('verbose', logData);
     } catch (error) {
       console.error('Error in FluentLogger.verbose:', error);
@@ -283,9 +367,81 @@ export class FluentLogger implements LoggerService, OnModuleInit {
     }
   }
 
+  // New method specifically for logging complex request data
+  logRequest(message: string, context: string, requestData: any) {
+    try {
+      const sanitizedData = this.sanitizeMetadata(requestData);
+
+      // Write to both regular and detailed logs
+      this.logger.info(message, {
+        context,
+        requestData: sanitizedData,
+        logType: 'REQUEST',
+      });
+
+      // Also write detailed stack trace to separate file if present
+      if (requestData.stacks || requestData.callStack) {
+        this.logger.debug('Request Stack Trace', {
+          context: `${context}-STACK`,
+          stacks: requestData.stacks,
+          callStack: requestData.callStack,
+          url: requestData.url,
+          method: requestData.method,
+          logType: 'STACK_TRACE',
+        });
+      }
+
+      this.sendToFluentBit('info', { message, context, ...sanitizedData });
+    } catch (error) {
+      console.error('Error logging request:', error);
+      // Fallback to simple logging
+      this.logger.info(`${message} [FALLBACK - Complex data logging failed]`, {
+        context,
+      });
+    }
+  }
+
+  private sanitizeMetadata(meta: any): any {
+    if (!meta || typeof meta !== 'object') {
+      return meta;
+    }
+
+    try {
+      // Create a deep copy that can be safely serialized
+      const sanitized = JSON.parse(
+        JSON.stringify(meta, this.getCircularReplacer()),
+      );
+
+      // Truncate very large stack traces for file logging
+      if (sanitized.stacks) {
+        Object.keys(sanitized.stacks).forEach((key) => {
+          if (
+            typeof sanitized.stacks[key] === 'string' &&
+            sanitized.stacks[key].length > 5000
+          ) {
+            sanitized.stacks[key] =
+              sanitized.stacks[key].substring(0, 5000) + '\n... [TRUNCATED]';
+          }
+        });
+      }
+
+      return sanitized;
+    } catch (error) {
+      return {
+        error: 'Failed to sanitize metadata',
+        originalType: typeof meta,
+        keys: Object.keys(meta).slice(0, 10), // First 10 keys for debugging
+      };
+    }
+  }
+
   private formatLogMessage(message: any): string {
     if (typeof message === 'object') {
-      return JSON.stringify(message, null, 0);
+      try {
+        return JSON.stringify(message, this.getCircularReplacer(), 0);
+      } catch (error) {
+        return `[Complex object - ${error.message}]`;
+      }
     }
     return String(message);
   }
