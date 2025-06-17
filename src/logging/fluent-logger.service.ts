@@ -275,96 +275,115 @@ export class FluentLogger implements LoggerService, OnModuleInit {
   }
 
   log(message: any, context?: string, ...meta: any[]) {
-    const logContext = context || this.context;
-    const logData = {
-      message: this.formatLogMessage(message),
-      context: logContext,
-      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
-    };
-
-    // Log with all metadata properly structured
-    this.logger.info(logData.message, {
-      context: logContext,
-      ...logData,
-    });
-
-    this.sendToFluentBit('info', logData);
+    this.logWithStack('info', message, context, undefined, ...meta);
   }
 
   error(message: any, trace?: string, context?: string, ...meta: any[]) {
-    const logContext = context || this.context;
-    const logData = {
-      message: this.formatLogMessage(message),
-      trace,
-      context: logContext,
-      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
-    };
-
-    this.logger.error(logData.message, {
-      trace,
-      context: logContext,
-      ...logData,
-    });
-
-    this.sendToFluentBit('error', logData);
+    this.logWithStack('error', message, context, trace, ...meta);
   }
 
   warn(message: any, context?: string, ...meta: any[]) {
-    const logContext = context || this.context;
-    const logData = {
-      message: this.formatLogMessage(message),
-      context: logContext,
-      ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
-    };
-
-    this.logger.warn(logData.message, {
-      context: logContext,
-      ...logData,
-    });
-
-    this.sendToFluentBit('warn', logData);
+    this.logWithStack('warn', message, context, undefined, ...meta);
   }
 
   debug(message: any, context?: string, ...meta: any[]) {
-    try {
-      const logContext = context || this.context;
-      const logData = {
-        message: this.formatLogMessage(message),
-        context: logContext,
-        ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
-      };
-
-      this.logger.debug(logData.message, {
-        context: logContext,
-        ...logData,
-      });
-
-      this.sendToFluentBit('debug', logData);
-    } catch (error) {
-      console.error('Error in FluentLogger.debug:', error);
-      console.debug(`[${context || this.context}] DEBUG: ${message}`);
-    }
+    this.logWithStack('debug', message, context, undefined, ...meta);
   }
 
   verbose(message: any, context?: string, ...meta: any[]) {
+    this.logWithStack('verbose', message, context, undefined, ...meta);
+  }
+
+  // Universal logging method with stack trace capture
+  private logWithStack(
+    level: string,
+    message: any,
+    context?: string,
+    trace?: string,
+    ...meta: any[]
+  ) {
     try {
       const logContext = context || this.context;
+      const capturedStack = this.captureCallStack();
+      const requestId = this.generateLogId();
+
       const logData = {
+        logId: requestId,
         message: this.formatLogMessage(message),
         context: logContext,
+        level,
+        timestamp: new Date().toISOString(),
+        callStack: capturedStack,
+        ...(trace && { originalTrace: trace }),
         ...(meta.length > 0 && meta[0] ? this.sanitizeMetadata(meta[0]) : {}),
       };
 
-      this.logger.verbose(logData.message, {
+      // Log with Winston
+      const logMethod = this.logger[level] || this.logger.info;
+      logMethod.call(this.logger, logData.message, {
         context: logContext,
         ...logData,
       });
 
-      this.sendToFluentBit('verbose', logData);
+      // Write detailed stack to separate file
+      this.logger.debug(`[${level.toUpperCase()}] Stack Trace`, {
+        context: `${logContext}-STACK`,
+        logId: requestId,
+        callStack: capturedStack,
+        logType: 'STACK_TRACE',
+        originalLevel: level,
+        originalMessage: logData.message,
+      });
+
+      this.sendToFluentBit(level, logData);
     } catch (error) {
-      console.error('Error in FluentLogger.verbose:', error);
-      console.log(`[${context || this.context}] VERBOSE: ${message}`);
+      console.error(`Error in FluentLogger.${level}:`, error);
+      // Fallback logging
+      const fallbackMethod = console[level] || console.log;
+      fallbackMethod(
+        `[${context || this.context}] ${level.toUpperCase()}: ${message}`,
+      );
     }
+  }
+
+  // Enhanced stack capture method
+  private captureCallStack(): string {
+    try {
+      const stackTrace = new Error().stack;
+
+      if (!stackTrace) {
+        return 'Stack trace not available';
+      }
+
+      const stackLines = stackTrace.split('\n');
+
+      // Filter out internal logger calls and framework noise
+      const cleanedStack = stackLines
+        .slice(1) // Remove "Error" line
+        .filter((line) => {
+          return (
+            !line.includes('FluentLogger') &&
+            !line.includes('logWithStack') &&
+            !line.includes('captureCallStack') &&
+            !line.includes('node_modules/@nestjs/core') &&
+            !line.includes('node_modules/@nestjs/common') &&
+            !line.includes('node_modules/rxjs') &&
+            !line.includes('internal/') &&
+            line.trim().length > 0
+          );
+        })
+        .slice(0, 20) // Limit to first 20 meaningful frames
+        .map((line, index) => `  ${index + 1}. ${line.trim()}`)
+        .join('\n');
+
+      return cleanedStack || 'No application stack trace available';
+    } catch (error) {
+      return `Stack capture failed: ${error.message}`;
+    }
+  }
+
+  private generateLogId(): string {
+    return `log_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
   }
 
   // New method specifically for logging complex request data
